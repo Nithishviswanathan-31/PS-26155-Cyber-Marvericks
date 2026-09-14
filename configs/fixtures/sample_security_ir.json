@@ -1,0 +1,62 @@
+{
+  "schema_version": "0.1",
+  "device": {
+    "vendor": "cisco_iosxe",
+    "version": "17.x",
+    "hostname": "demo-router",
+    "device_model": "Demo ISR",
+    "serial_number": "DEMO-SERIAL-001",
+    "device_id": "demo-router-001"
+  },
+  "normalized_properties": {
+    "management.ssh_enabled": true,
+    "management.telnet_enabled": false,
+    "logging.enabled": true,
+    "password_protection.enabled": true,
+    "time_sync.ntp_enabled": true
+  },
+  "provenance": {
+    "management.ssh_enabled": {
+      "source_file": "configs/cisco/compliant.conf",
+      "line_start": 18,
+      "line_end": 18,
+      "raw_excerpt": "transport input ssh"
+    },
+    "management.telnet_enabled": {
+      "source_file": "configs/cisco/compliant.conf",
+      "line_start": 18,
+      "line_end": 18,
+      "raw_excerpt": "transport input ssh"
+    },
+    "logging.enabled": {
+      "source_file": "configs/cisco/compliant.conf",
+      "line_start": 24,
+      "line_end": 24,
+      "raw_excerpt": "logging buffered 16384"
+    },
+    "password_protection.enabled": {
+      "source_file": "configs/cisco/compliant.conf",
+      "line_start": 11,
+      "line_end": 11,
+      "raw_excerpt": "service password-encryption"
+    },
+    "time_sync.ntp_enabled": {
+      "source_file": "configs/cisco/compliant.conf",
+      "line_start": 29,
+      "line_end": 29,
+      "raw_excerpt": "ntp server 192.0.2.10"
+    }
+  },
+  "unknown_patterns": [
+    {
+      "pattern_id": "demo-unknown-001",
+      "raw_pattern": "future-demo-directive enabled",
+      "status": "UNKNOWN",
+      "source_file": "configs/fixtures/sample_security_ir.json",
+      "line_start": 1,
+      "line_end": 1,
+      "reason": "Synthetic fixture record for the P0.2 unknown-pattern contract.",
+      "context": "This is demo data; no AI or mapping workflow is implemented in P0.2."
+    }
+  ]
+}

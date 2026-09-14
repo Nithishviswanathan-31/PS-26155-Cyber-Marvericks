@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+backend/demo.db
+backend/*.db-shm
+backend/*.db-wal
+frontend/node_modules/
+frontend/dist/
+.env
+.env.*
+!.env.example
+*.log

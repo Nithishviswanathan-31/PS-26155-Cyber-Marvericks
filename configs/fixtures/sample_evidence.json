@@ -1,0 +1,17 @@
+{
+  "control_id": "CTRL-002",
+  "control_name": "Audit logging enabled",
+  "property": "logging.enabled",
+  "result": "FAIL",
+  "condition_result": "FAIL",
+  "vendor": "cisco_iosxe",
+  "configuration_version": "17.9",
+  "expected": true,
+  "actual": false,
+  "source_file": "configs/cisco/noncompliant.conf",
+  "line_start": 5,
+  "line_end": 5,
+  "raw_excerpt": "no logging buffered 16384",
+  "explanation": "logging.enabled was False, but the expected value is True.",
+  "control_explanation": "One or more required deterministic conditions are violated."
+}

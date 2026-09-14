@@ -1,0 +1,80 @@
+controls:
+  - control_id: CTRL-001
+    name: Secure management transport
+    description: Management access should use SSH and should not expose Telnet.
+    expected_value: SSH enabled and Telnet disabled
+    evaluation:
+      type: all
+      conditions:
+        - path: management.ssh_enabled
+          operator: equals
+          expected: true
+        - path: management.telnet_enabled
+          operator: equals
+          expected: false
+    evidence_rule:
+      include_paths:
+        - management.ssh_enabled
+        - management.telnet_enabled
+    remediation:
+      cisco_iosxe: Review the vendor configuration and restrict management access to SSH only.
+      fortigate_fortios: Review administrative access settings and disable insecure management protocols.
+      paloalto_panos: Review device management service settings and restrict access to secure protocols.
+      astranet: Apply the approved synthetic secure-channel mapping.
+
+  - control_id: CTRL-002
+    name: Audit logging enabled
+    description: Configuration logging should be enabled for audit traceability.
+    expected_value: Logging enabled
+    evaluation:
+      type: equals
+      conditions:
+        - path: logging.enabled
+          operator: equals
+          expected: true
+    evidence_rule:
+      include_paths:
+        - logging.enabled
+    remediation:
+      cisco_iosxe: Review logging configuration and enable the required audit logging settings.
+      fortigate_fortios: Review event logging configuration and enable the required audit logs.
+      paloalto_panos: Review system and configuration log settings and enable the required audit logs.
+      astranet: Review the synthetic audit logging setting.
+
+  - control_id: CTRL-003
+    name: Secret protection enabled
+    description: Stored credentials or secrets should use the platform protection mechanism.
+    expected_value: Secret protection enabled
+    evaluation:
+      type: equals
+      conditions:
+        - path: password_protection.enabled
+          operator: equals
+          expected: true
+    evidence_rule:
+      include_paths:
+        - password_protection.enabled
+    remediation:
+      cisco_iosxe: Review credential protection settings and enable the platform protection mechanism.
+      fortigate_fortios: Review administrator credential protection settings.
+      paloalto_panos: Review administrator authentication and credential protection settings.
+      astranet: Review the synthetic secret-guard setting.
+
+  - control_id: CTRL-004
+    name: Time synchronization configured
+    description: Network time synchronization should be enabled for consistent event timelines.
+    expected_value: NTP enabled
+    evaluation:
+      type: equals
+      conditions:
+        - path: time_sync.ntp_enabled
+          operator: equals
+          expected: true
+    evidence_rule:
+      include_paths:
+        - time_sync.ntp_enabled
+    remediation:
+      cisco_iosxe: Review NTP configuration and enable approved time synchronization.
+      fortigate_fortios: Review system time settings and enable approved NTP synchronization.
+      paloalto_panos: Review device time settings and enable approved NTP synchronization.
+      astranet: Review the synthetic clock-sync setting.
