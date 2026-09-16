@@ -1,278 +1,255 @@
-# PS 26155 — Emergency Demo MVP
+# PS 26155 — AI-Driven Multi-Vendor Network Security Compliance Auditor
 
-AI-Driven Multi-Vendor Network Security Compliance Auditor for the internal
-college hackathon demonstration by CYBER MARVERICKS.
+**SIH 2026** · **Team CYBER MARVERICKS**
+**Team Leader:** NITHISH V · **Mentor:** PAVITHARA K
 
-This repository is intentionally limited to the verified P0.1 foundation, the
-P0.2 Security IR/source-provenance contract, the P0.3 deterministic compliance
-engine, the focused P0.4 Cisco IOS/IOS-XE parser, the P0.5 evidence module, the
-P0.6 basic analysis API, the P0.7 frontend upload/analysis workflow, and the
-focused P0.8 FortiGate/FortiOS parser, the focused P0.9 Palo Alto/PAN-OS
-parser, the P0.10-A synthetic AstraNet UNKNOWN-pattern workflow, and the
-P0.10-B controlled candidate-mapping workflow, P0.10-C explicit
-mapping-aware re-analysis, P0.11 integrity/demo hardening, P0.12 safe
-remediation simulation/re-audit, and P0.13 evidence-first PDF reporting. It is an
-emergency demo MVP, not the complete production-grade system.
+## Overview
 
-## V2 Control & Framework Foundation
+Network-device configurations differ by vendor and platform, which makes manual compliance reviews slow, difficult to reproduce, and inconsistent in their evidence. Unfamiliar syntax makes the problem harder: an auditor must avoid treating an unrecognised pattern as compliant simply because it appears similar to a known setting.
 
-The control catalogue now contains the four preserved V1 controls and two
-standalone management transport checks, with validated category, severity,
-vendor applicability, framework metadata, evidence requirements, and existing
-remediation references. The foundation also validates property types and mapping
-identity, rejects malformed catalogues, and counts management diagnostics under
-their parent requirement. See [V2 control foundation](docs/CONTROL_FOUNDATION_V2_1.md)
-for compatibility, deterministic boundaries, and the parser-limited scope.
+This V2 prototype audits multi-vendor network configurations through vendor-specific parsing, a vendor-neutral Security IR, deterministic controls, evidence-first results, controlled AI-assisted interpretation of unknown patterns, human-reviewed adaptive knowledge, explicit re-analysis, reporting, and integrity verification.
 
-“AI proposes → deterministic engine validates → evidence proves.”
+> **AI proposes → deterministic engine validates → evidence proves.**
+
+## Current V2 capabilities
+
+### Deterministic audit platform
+
+- Focused parsers for Cisco IOS / IOS-XE, FortiGate / FortiOS, and Palo Alto / PAN-OS.
+- A synthetic AstraNet workflow for demonstrating safe handling of unfamiliar configuration patterns.
+- Vendor-neutral Security IR with typed normalized properties and parser provenance.
+- Deterministic `PASS`, `FAIL`, and `UNKNOWN` control evaluation with evidence records containing actual value, expected value, source, source location, and provenance.
+- A YAML-backed control catalogue. `CTRL-005` and `CTRL-006` are diagnostics of `CTRL-001`, and are not counted as independent security coverage.
+- Persistent Device and Configuration domains, SHA-256 configuration fingerprints, duplicate detection, and durable analysis history.
+- Single-file and bounded bulk/batch analysis with per-item results and batch history.
+
+### Unknown-pattern interpretation and adaptive knowledge
+
+- Controlled, offline/demo AI interpretation proposals with confidence-gated human review.
+- Explicit approve, correct, and reject actions; an AI proposal never establishes compliance.
+- Versioned mappings, mapping approvals, conflict-aware adaptive knowledge entries, and audit history.
+- Exact identity-safe knowledge reuse only across vendor, pattern signature, normalized context, and target property.
+- Explicit mapping-aware re-analysis that creates a new analysis; the stored original remains unchanged.
+
+### Auditor workflow and product experience
+
+- Persistent auditor console with dashboard, Devices, Configurations, Analyses, Findings, Batches, Knowledge Review, Integrity, and Users views.
+- Device, configuration, analysis, batch, finding, mapping, knowledge, and report history with backend pagination and filtering.
+- Evidence, source provenance, AI proposal state, mapping/re-analysis lineage, remediation simulation information, and PDF report access in analysis detail.
+- PDF reporting with report ID, version/history metadata, generating actor, stored lineage, and integrity references.
+
+### Security, remediation, and integrity
+
+- Local authentication with `ADMIN`, `AUDITOR`, and `REVIEWER` roles, enforced server-side.
+- Expiring signed bearer sessions, revocation, salted PBKDF2-SHA256 password hashing, login throttling, and server-derived actor identity for auditable mutations.
+- Deterministic, parser-backed remediation **simulation** for `CTRL-001` through `CTRL-004` where supported by Cisco, FortiGate, and Palo Alto parser properties.
+- SHA-256 artifact integrity records and a **TAMPER-EVIDENT LOCAL AUDIT LEDGER** with deterministic canonicalization, append-only previous-hash linkage, and explicit verification.
+
+## Architecture
+
+### Deterministic audit path
+
+```text
+Configuration
+    ↓
+Vendor Detection
+    ↓
+Vendor Parser
+    ↓
+Vendor-Neutral Security IR
+    ↓
+Deterministic Control Engine
+    ↓
+PASS / FAIL / UNKNOWN
+    ↓
+Evidence and Provenance
+    ↓
+Report / Integrity Record / Audit Ledger
+```
+
+### Unknown-pattern path
+
+```text
+UNKNOWN
+    ↓
+AI Interpretation Provider
+    ↓
+Confidence Gate
+    ↓
+Human Review
+    ↓
+Approved Versioned Mapping
+    ↓
+Adaptive Knowledge
+    ↓
+Explicit Re-analysis
+    ↓
+Security IR
+    ↓
+Deterministic Compliance and Evidence
+```
+
+AI may inform a reviewer, but it does not independently establish a `PASS` or `FAIL`. Knowledge reuse also cannot directly create a compliance result. Only an approved mapping followed by explicit re-analysis and deterministic evaluation can do so.
+
+## Remediation is simulation-only
+
+The prototype provides deterministic remediation capability discovery and simulations for the following parser-backed controls:
+
+| Control | Capability |
+| --- | --- |
+| `CTRL-001` | Secure management transport: SSH enabled and Telnet disabled |
+| `CTRL-002` | Audit logging enabled |
+| `CTRL-003` | Secret / credential protection enabled |
+| `CTRL-004` | Time synchronization configured |
+
+Supported Cisco IOS / IOS-XE, FortiGate / FortiOS, and Palo Alto / PAN-OS combinations operate on a deep copy of the stored Security IR. Each simulation records the remediation ID, control, vendor, actor, timestamp, original configuration fingerprint, before/after state, evidence provenance, and integrity linkage. Unsupported vendor/control combinations return `UNSUPPORTED_REMEDIATION`; AstraNet remediation is not implemented.
+
+> **SIMULATION ONLY — NO DEVICE WAS MODIFIED.**
+
+The backend does not connect to network devices, execute CLI commands, call device APIs, SSH, or Telnet. A simulation has `compliance_final: false`; only explicit re-analysis of the simulated copy produces a deterministic simulated compliance result. The original configuration and analysis remain unchanged.
+
+## Integrity and future blockchain boundary
+
+The current mechanism is a **TAMPER-EVIDENT LOCAL AUDIT LEDGER**, not a public or distributed blockchain.
+
+- Important configuration, analysis, evidence, mapping-version, AI-proposal, remediation-simulation, and report artifacts receive SHA-256 integrity records.
+- Canonical artifact JSON uses UTF-8, sorted keys, compact separators, and preserved array order so whitespace and JSON key order do not alter a logical hash.
+- Each append-only ledger record binds immutable record content to the prior record hash, allowing verification to detect altered artifacts, altered hashes, broken links, missing records, and truncation.
+- Configuration records retain the existing SHA-256 content fingerprint. Analysis verification reads stored snapshots; it does not re-run the compliance engine.
+- Reports link their generated report ID and metadata to integrity records and the analysis lineage.
+
+`IntegrityLedger` and `LocalHashChainLedger` form an abstraction boundary for a future anchored or distributed ledger backend. The local ledger does not provide public-chain finality, distributed consensus, encryption, or independent external timestamping. See [Evidence integrity ledger](docs/EVIDENCE_INTEGRITY_LEDGER.md).
+
+## Authentication and RBAC
+
+Authentication is local/offline and enforced by the backend; hiding a frontend control is never the authorization mechanism.
+
+| Role | Main permissions |
+| --- | --- |
+| `ADMIN` | Audit access, user administration, and local demo administration |
+| `AUDITOR` | Upload configurations, run batch analysis and remediation simulations, view audit data and reports, and explicitly re-analyze approved mappings |
+| `REVIEWER` | View audit data and evidence, generate/review interpretations, approve/correct/reject mappings, manage knowledge state, and inspect mapping/knowledge history |
+
+The service uses HMAC-signed bearer tokens with expiry and session IDs. Logout and user role/password/enabled-state changes revoke sessions. Passwords are stored only as salted PBKDF2-HMAC-SHA256 hashes. For new sensitive actions, the server derives actor identity and role from the authenticated session; request-body reviewer or user identifiers cannot impersonate another user.
+
+`AUTH_REQUIRED=false` preserves the offline development workflow and is not a secured deployment. `AUTH_REQUIRED=true` requires a configured signing secret and authenticated user. Enterprise SSO, MFA, password recovery, and multi-tenant authorization are not implemented. See [Authentication and RBAC](docs/AUTHENTICATION_RBAC.md).
 
 ## Technology stack
 
-- Backend: Python, FastAPI, Pydantic, PyYAML, ReportLab, SQLite
-- Frontend: React, TypeScript, Vite, Material UI
-- Controls: YAML catalogue
+| Area | Technology |
+| --- | --- |
+| Backend | Python, FastAPI, Pydantic, SQLite, PyYAML, Uvicorn |
+| Reporting | ReportLab and pypdf |
+| Frontend | React, TypeScript, Vite, Material UI |
+| Controls | Validated YAML control catalogue |
+| Integrity | SHA-256 canonical artifact hashes and local hash-chain ledger |
 
-SQLite is used for the emergency local demo. The storage module is kept separate
-so PostgreSQL can be introduced in a later phase.
+## Repository structure
 
-## Local setup
+```text
+backend/                 FastAPI application, domain models, services, storage, APIs, and tests
+backend/tests/           Backend unit, integration, security, integrity, reporting, and regression tests
+frontend/                React/TypeScript/MUI auditor console
+controls/                Validated deterministic YAML control catalogue
+configs/                 Synthetic vendor fixtures and Security IR examples
+docs/                    Architecture, workflow, security, remediation, reporting, and integrity documentation
+```
+
+## Local setup (Windows PowerShell)
+
+### Backend
 
 From the repository root:
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -r backend/requirements.txt
-```
-
-On Windows PowerShell, activate with:
-
 ```powershell
-.venv\Scripts\Activate.ps1
-```
-
-## Start the backend
-
-```bash
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r backend\requirements.txt
+$env:PYTHONPATH = "backend"
 python -m uvicorn app.main:app --app-dir backend --reload --port 8000
 ```
 
-Health check:
+In another PowerShell window, confirm the service is running:
 
-```bash
-curl http://127.0.0.1:8000/health
+```powershell
+Invoke-RestMethod http://127.0.0.1:8000/health
 ```
 
-Expected response:
+### Frontend
 
-```json
-{"status":"ok"}
-```
-
-## Start the frontend
-
-```bash
-cd frontend
+```powershell
+Set-Location frontend
 npm install
 npm run dev
 ```
 
-Open the Vite URL shown in the terminal, normally `http://localhost:5173`.
+Open the local Vite URL shown by the terminal, normally `http://localhost:5173`.
 
-## Run tests
+### Secured local demo users
 
-From the repository root:
+Authentication is optional only for the local offline workflow. For a secured local demo, set environment values before starting the backend. Do not put real values in tracked files.
 
-```bash
-PYTHONPATH=backend pytest backend/tests -q
+```powershell
+$env:AUTH_REQUIRED = "true"
+$env:AUTH_SECRET = "replace-with-a-local-random-secret-of-at-least-32-bytes"
+$env:DEMO_ADMIN_PASSWORD = "replace-with-a-local-12-or-more-character-password"
+$env:DEMO_AUDITOR_PASSWORD = "replace-with-a-local-12-or-more-character-password"
+$env:DEMO_REVIEWER_PASSWORD = "replace-with-a-local-12-or-more-character-password"
+$env:PYTHONPATH = "backend"
+python -m app.seed_users
 ```
 
-## Current MVP scope
+Seeding is explicit, local-only, idempotent, and disabled in production. It creates configured demo users only when their passwords are supplied; no default credentials or signing secret ship with the repository. See [Authentication and RBAC](docs/AUTHENTICATION_RBAC.md) for environment details and the permission matrix.
 
-P0.1 and P0.2 currently include:
+### Tests and frontend validation
 
-- Compliance and pattern status enums
-- Extensible Security IR contract with device metadata
-- Source provenance with file, line range, and raw excerpt
-- Unknown-pattern records with explicit source fields and `UNKNOWN` status
-- `SecurityIR.trace_property()` source traceability helper
-- Representative JSON Security IR fixture at `configs/fixtures/sample_security_ir.json`
-- SQLite initialization without the future application schema
-- Four validated demo control definitions
-- Minimal FastAPI health endpoint
-- Minimal React/MUI application shell
+```powershell
+# From the repository root, with the virtual environment active
+$env:PYTHONPATH = "backend"
+python -m pytest backend\tests -q -p no:cacheprovider
 
-P0.3 additionally includes:
-
-- Generic YAML-driven deterministic control evaluation
-- `PASS`, `FAIL`, `UNKNOWN`, and explicit `NOT_APPLICABLE` handling
-- Evidence returned from Security IR provenance
-- Structured control evaluation result models
-- Repeatability coverage
-
-P0.4 additionally includes:
-
-- Focused Cisco IOS/IOS-XE configuration parser
-- Cisco synthetic compliant, non-compliant, and unknown fixtures
-- Source provenance for every parsed normalized property
-- Cisco parser-to-control-engine integration tests
-
-P0.5 additionally includes:
-
-- Reusable Pydantic `EvidenceRecord`
-- `build_evidence()` provenance-based evidence generation
-- Separate evidence for each property in multi-property controls
-- Missing-provenance protection and evidence serialization tests
-
-P0.6 additionally includes:
-
-- `POST /api/analyze` multipart upload endpoint
-- Cisco upload-to-evidence JSON response
-- Minimal persisted analysis response in SQLite
-- Safe file validation and error handling
-- FastAPI OpenAPI/Swagger exposure
-
-P0.7 additionally includes:
-
-- Typed frontend client for `POST /api/analyze`
-- Cisco-only configuration upload and drag-and-drop workflow
-- Explicit upload, loading, success, and error states
-- Deterministic result table with PASS, FAIL, PARTIAL, NOT APPLICABLE, and UNKNOWN labels
-- Traceable evidence detail dialog with source file, line range, and raw excerpt
-- Minimal session dashboard with navigation between Dashboard and Analyze Configuration
-
-P0.8 additionally includes:
-
-- Focused FortiGate/FortiOS parser with vendor-neutral Security IR output
-- Synthetic FortiGate compliant, non-compliant, and unknown fixtures
-- FortiGate provenance and parser-to-engine/evidence integration tests
-- Cross-vendor normalization coverage for Cisco and FortiGate
-
-P0.9 additionally includes:
-
-- Focused Palo Alto/PAN-OS `set`-statement parser with vendor-neutral Security IR output
-- Synthetic Palo Alto compliant, non-compliant, and unknown fixtures
-- Minimal API routing for Cisco, FortiGate, and Palo Alto
-- Three-vendor normalization and control-engine integration coverage
-
-P0.10-A additionally includes:
-
-- Fictional AstraNet detection and focused parser
-- Synthetic unknown-pattern fixture with exact source provenance
-- Safe UNKNOWN results through the existing deterministic engine
-- Minimal API and frontend display of unresolved patterns
-
-V2 implements local authentication and role-based access control, plus a
-persistent auditor console with dashboard, inventory, analysis history,
-findings, batches, knowledge review and integrity views. These capabilities are
-for the offline/demo prototype; enterprise identity, deployment hardening and
-multi-tenant operation remain future work.
-
-## P0.9 status
-
-P0.9 adds focused Palo Alto/PAN-OS parsing while preserving the Cisco and
-FortiGate parsers, generic deterministic engine, evidence module, and existing
-frontend result/evidence workflow. The Palo Alto parser is intentionally limited
-to the documented `set`-statement patterns; unsupported or ambiguous input
-remains UNKNOWN.
-
-## P0.10-A status
-
-P0.10-A adds only a fictional AstraNet configuration used to prove that an
-unfamiliar `guard-channel lattice-secure` pattern is retained as `UNKNOWN`
-with exact source provenance. The phase itself added no mapping approval or
-re-analysis. See `docs/ASTRANET_UNKNOWN_WORKFLOW.md` for the phase contract.
-
-## P0.10-B status
-
-P0.10-B adds a schema-validated local candidate suggestion adapter, explicit
-human approve/correct/reject operations, and versioned SQLite mapping history.
-Approval stores knowledge only; it does not modify Security IR or produce
-PASS/FAIL. P0.10-C now adds explicit copy-based re-analysis using the active
-approved mapping. See
-`docs/ADAPTIVE_MAPPING_WORKFLOW.md`.
-
-## P0.10-C status
-
-P0.10-C adds explicit `POST /api/analyze/{analysis_id}/reanalyze`. It creates a
-new child analysis, applies the active approved mapping to a deep Security IR
-copy, reruns the deterministic controls, and records mapping-aware evidence.
-The original analysis remains immutable; mapped patterns are marked
-`RECOGNIZED_VIA_APPROVED_MAPPING`. Reporting remains outside this phase.
-
-## P0.11 status
-
-P0.11 hardens the existing MVP without adding a new functional layer.
-Historical analyses, Security IR snapshots, and evidence are immutable.
-Explicit re-analysis creates a new child analysis and records the exact
-approved mapping version used; repeated re-analysis creates independent
-children. API failures include stable machine-readable `error_code` values
-alongside the legacy `detail` message. AI suggestions never directly
-determine compliance.
-
-## P0.12 status
-
-P0.12 adds deterministic remediation recommendations for the supported
-CTRL-001 management-transport finding on Cisco IOS/IOS-XE, FortiGate/FortiOS,
-and Palo Alto/PAN-OS. Simulation deep-copies the stored Security IR, applies a
-controlled property transformation, reruns the deterministic engine, and
-stores fresh before/after evidence. No command is executed and no production
-device is contacted or modified. AstraNet remains focused on adaptive mapping.
-
-## P0.13 status
-
-P0.13 adds an evidence-first, read-only PDF export at
-`GET /api/reports/{analysis_id}/pdf`. It formats stored deterministic results,
-source evidence, analysis lineage, approved mapping/version provenance, and
-simulation-only before/after data without recalculating compliance or mutating
-stored records. Historical analyses remain immutable. See
-`docs/PDF_REPORTING.md`.
-
-## P0.14 demo quick-start
-
-The following uses only checked-in synthetic fixtures and local SQLite data:
-
-```bash
-# From the repository root
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -r backend/requirements.txt
-
-# Terminal 1 — backend
-PYTHONPATH=backend python -m uvicorn app.main:app --app-dir backend --reload --port 8000
-
-# Terminal 2 — frontend
-cd frontend
-npm install
-npm run dev
+# From frontend/
+npm run build
+node --test tests/auth-http.test.mjs
 ```
 
-Open the Vite URL, choose `configs/cisco/noncompliant.conf`, and run:
+## Authenticated demo workflows
 
-```text
-Analyze → CTRL-001 FAIL → Evidence → View remediation → Simulate → PASS → Generate PDF
-```
+1. **Standard audit:** sign in, upload a Cisco configuration, inspect the deterministic controls and evidence, then open history, generate a PDF report, and verify integrity.
+2. **Remediation:** begin with a non-compliant configuration, inspect evidence, simulate a supported remediation, review before/after state, explicitly re-analyze the simulation, then inspect the deterministic result, report, and integrity reference.
+3. **Unknown / AI:** upload the synthetic AstraNet unknown-pattern fixture, retain `UNKNOWN`, generate an interpretation proposal, have a reviewer approve a mapping, then explicitly re-analyze to produce deterministic evidence and an adaptive knowledge record.
+4. **Batch:** submit multiple configurations, including mixed valid and invalid items, and inspect per-item results, device/configuration associations, batch history, and dashboard totals.
+5. **RBAC:** use `ADMIN` for user administration, `AUDITOR` for audit workflows, and `REVIEWER` for interpretation, mapping, and knowledge review. Forbidden operations return `403` from the server.
 
-Then choose `configs/astranet/unknown-pattern.conf` and run:
+## Validation status
 
-```text
-Analyze → UNKNOWN → Generate suggestion → Human approve → Mapping v1 → Re-analyze → Recognized → Generate PDF
-```
+The final V2 validation for the frozen implementation recorded:
 
-Reset local demo records without changing the schema:
+- **Backend:** 420 passed, 0 failed, 0 skipped.
+- **Frontend:** TypeScript validation passed, Vite production build passed, and frontend authentication tests passed.
+- **Coverage:** authentication/RBAC, parsers, Security IR, deterministic controls, batch processing, interpretations, adaptive knowledge, mappings/re-analysis, remediation, integrity, PDF reporting, and auditor console workflows.
 
-```bash
-curl -X POST http://127.0.0.1:8000/api/demo/reset
-```
+## Limits and safety boundaries
 
-The reset route is development/demo-only and is disabled when `APP_ENV` is
-`production`. To seed the two reproducible walkthroughs (including a Cisco
-simulation and AstraNet mapping/re-analysis), run from the repository root:
+- AstraNet is a synthetic demo vendor for the unknown-pattern workflow; it has no remediation implementation.
+- The interpretation provider is local/offline demo functionality. There is no external LLM integration or semantic embedding/vector search.
+- Vendor parser and control coverage is focused; this is not a claim of complete production syntax or compliance-framework coverage.
+- The local audit ledger is tamper-evident, not a public blockchain or a distributed-consensus system.
+- Remediation is simulation-only. It never contacts or modifies a device.
+- Authentication is local single-workspace RBAC; MFA, enterprise SSO, password recovery, and multi-tenant authorization are future work.
+- Report metadata and lineage are persisted, while generated raw PDF binaries are not retained as long-term stored artifacts.
+- Stored audit records retain normalized state and evidence/provenance rather than acting as a second repository for full raw uploaded configuration text.
 
-```bash
-python -m backend.scripts.seed_demo
-```
+## Future work
 
-The seed uses the checked-in synthetic files and prints the generated IDs for
-the current local run. It does not create production statistics or contact
-devices.
+Possible future work includes independently reviewed wider parser/control coverage, production identity and tenant boundaries, secure deployment architecture, externally anchored ledger implementations, external AI providers with appropriate data controls, semantic retrieval, and separately authorized vendor configuration deployment workflows.
+
+## Additional documentation
+
+- [Control foundation](docs/CONTROL_FOUNDATION_V2_1.md)
+- [Adaptive mapping workflow](docs/ADAPTIVE_MAPPING_WORKFLOW.md)
+- [Remediation simulation](docs/REMEDIATION_SIMULATION.md)
+- [PDF reporting](docs/PDF_REPORTING.md)
+- [Evidence integrity ledger](docs/EVIDENCE_INTEGRITY_LEDGER.md)
+- [Authentication and RBAC](docs/AUTHENTICATION_RBAC.md)
