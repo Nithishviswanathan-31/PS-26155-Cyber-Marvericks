@@ -1,3 +1,4 @@
+import { authFetch as fetch } from "./http";
 export type ComplianceResult =
   | "PASS"
   | "FAIL"
@@ -17,9 +18,11 @@ export interface AnalysisDevice {
   device_model: string | null;
   serial_number: string | null;
   device_id: string | null;
+  platform: string | null;
 }
 
 export interface ControlResultSummary {
+  diagnostic_of?: string | null;
   control_id: string;
   control_name: string;
   result: ComplianceResult;
@@ -71,6 +74,7 @@ export interface UnknownPatternSummary {
 }
 
 export interface AnalysisResponse {
+  configuration?: { configuration_id: string; device_id: string; content_sha256: string; parser_status: string } | null;
   analysis_id: string;
   filename: string;
   vendor: string;
@@ -85,6 +89,31 @@ export interface AnalysisResponse {
   mapping_version: number | null;
   reanalyzed_at: string | null;
   message: string | null;
+}
+
+export interface BatchItem {
+  batch_item_id: string;
+  source_filename: string;
+  configuration_id: string | null;
+  device_id: string | null;
+  analysis_id: string | null;
+  content_sha256: string | null;
+  processing_status: "QUEUED" | "PROCESSING" | "COMPLETED" | "FAILED" | "DUPLICATE";
+  error_code: string | null;
+  error_message: string | null;
+  duplicate_of_configuration_id: string | null;
+  compliance_status: "PASS" | "FAIL" | "UNKNOWN" | "MIXED" | null;
+}
+
+export interface BatchAnalysis {
+  batch_id: string;
+  status: string;
+  total_items: number;
+  processed_items: number;
+  successful_items: number;
+  failed_items: number;
+  duplicate_items: number;
+  summary: { total: number; processed: number; successful: number; failed: number; duplicates: number; pass_analyses: number; fail_analyses: number; unknown_analyses: number };
 }
 
 export interface RecognizedPatternSummary {
@@ -156,12 +185,14 @@ const parseDevice = (value: unknown): AnalysisDevice | null => {
   const deviceModel = optionalString(value, "device_model");
   const serialNumber = optionalString(value, "serial_number");
   const deviceId = optionalString(value, "device_id");
+  const platform = optionalString(value, "platform");
   if (
     (value.hostname !== null && value.hostname !== undefined && hostname === null) ||
     (value.version !== null && value.version !== undefined && version === null) ||
     (value.device_model !== null && value.device_model !== undefined && deviceModel === null) ||
     (value.serial_number !== null && value.serial_number !== undefined && serialNumber === null) ||
     (value.device_id !== null && value.device_id !== undefined && deviceId === null)
+    || (value.platform !== null && value.platform !== undefined && platform === null)
   ) {
     return null;
   }
@@ -171,6 +202,7 @@ const parseDevice = (value: unknown): AnalysisDevice | null => {
     device_model: deviceModel,
     serial_number: serialNumber,
     device_id: deviceId,
+    platform,
   };
 };
 
@@ -195,6 +227,7 @@ const parseResults = (value: unknown): ControlResultSummary[] | null => {
     results.push({
       control_id: controlId,
       control_name: controlName,
+      diagnostic_of: optionalString(item, "diagnostic_of"),
       result: item.result,
       expected: item.expected,
       actual: item.actual,
@@ -326,6 +359,14 @@ export const parseAnalysisResponse = (value: unknown): AnalysisResponse => {
   const mappingVersion = optionalNumber(value, "mapping_version");
   const reanalyzedAt = optionalString(value, "reanalyzed_at");
   const message = optionalString(value, "message");
+  let configuration: AnalysisResponse["configuration"] = null;
+  if (value.configuration !== undefined && value.configuration !== null) {
+    const item = value.configuration;
+    if (!isRecord(item) || typeof item.configuration_id !== "string" || typeof item.device_id !== "string" || typeof item.content_sha256 !== "string" || typeof item.parser_status !== "string") {
+      throw new AnalysisApiError("The server returned invalid configuration context.");
+    }
+    configuration = { configuration_id: item.configuration_id, device_id: item.device_id, content_sha256: item.content_sha256, parser_status: item.parser_status };
+  }
   if (
     analysisId === null ||
     filename === null ||
@@ -341,6 +382,7 @@ export const parseAnalysisResponse = (value: unknown): AnalysisResponse => {
   }
   return {
     analysis_id: analysisId,
+    configuration,
     filename,
     vendor,
     device,
@@ -384,5 +426,39 @@ export async function analyzeConfiguration(file: File): Promise<AnalysisResponse
     throw new AnalysisApiError(detail ?? "The server rejected the configuration.", response.status, code);
   }
 
+  return parseAnalysisResponse(payload);
+}
+
+export async function analyzeBatch(files: File[]): Promise<{ batch: BatchAnalysis; items: BatchItem[] }> {
+  const formData = new FormData();
+  files.forEach((file) => formData.append("files", file));
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE_URL}/api/batches/analyze`, { method: "POST", body: formData });
+  } catch {
+    throw new AnalysisApiError("The batch analysis service could not be reached.");
+  }
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok || !isRecord(payload)) {
+    const detail = isRecord(payload) && typeof payload.detail === "string" ? payload.detail : "The server rejected the batch.";
+    throw new AnalysisApiError(detail, response.status, isRecord(payload) && typeof payload.error_code === "string" ? payload.error_code : null);
+  }
+  const batch = payload as unknown as BatchAnalysis;
+  if (typeof batch.batch_id !== "string" || typeof batch.status !== "string" || typeof batch.summary !== "object" || batch.summary === null) {
+    throw new AnalysisApiError("The server returned an invalid batch response.");
+  }
+  const itemsResponse = await fetch(`${API_BASE_URL}/api/batches/${batch.batch_id}/items`);
+  const itemsPayload: unknown = await itemsResponse.json().catch(() => null);
+  if (!itemsResponse.ok || !Array.isArray(itemsPayload)) throw new AnalysisApiError("The batch items could not be loaded.", itemsResponse.status);
+  return { batch, items: itemsPayload as BatchItem[] };
+}
+
+export async function getAnalysis(analysisId: string): Promise<AnalysisResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/analyze/${encodeURIComponent(analysisId)}`);
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    const detail = isRecord(payload) && typeof payload.detail === "string" ? payload.detail : "The analysis could not be loaded.";
+    throw new AnalysisApiError(detail, response.status);
+  }
   return parseAnalysisResponse(payload);
 }

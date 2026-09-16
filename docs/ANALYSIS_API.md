@@ -59,6 +59,33 @@ The response contains:
 The original uploaded configuration is not persisted. Only the structured
 analysis response is stored in the minimal SQLite demo table.
 
+## Batch analysis
+
+Batch analysis reuses the same parser, Security IR, deterministic control,
+evidence, and persistence pipeline as single-file analysis:
+
+```http
+POST /api/batches/analyze
+Content-Type: multipart/form-data
+```
+
+The repeated form field is `files`. A batch accepts at most 25 `.conf`, `.cfg`,
+or `.txt` files, each up to 1 MB, with a 10 MB total limit. Items are processed
+independently, so a malformed or unsupported item does not discard valid
+analyses. The response reports batch processing status separately from each
+analysis's PASS, FAIL, UNKNOWN, or MIXED compliance status.
+
+```http
+GET /api/batches/{batch_id}
+GET /api/batches/{batch_id}/items
+GET /api/analyze/{analysis_id}
+```
+
+Identical content is retained as a new analysis history entry and marked with
+the earlier configuration ID. ZIP/archive uploads are rejected in this
+checkpoint; bounded multi-file upload keeps file extraction and archive-bomb
+risk out of the application until a separately reviewed archive design exists.
+
 ## Error behavior
 
 - Empty files, invalid encoding, unsupported extensions, and unsupported input
@@ -86,6 +113,36 @@ Example:
 Historical analyses are immutable. Re-analysis creates a new child analysis
 and records the exact approved mapping version used; it never dynamically
 reinterprets an earlier result.
+
+## Controlled interpretation
+
+Unknown patterns can request a provider-neutral interpretation proposal:
+
+```http
+POST /api/interpretations/{analysis_id}
+GET  /api/interpretations/{analysis_id}
+GET  /api/interpretations/proposals/{proposal_id}
+GET  /api/interpretations/proposals/{proposal_id}/history
+```
+
+The offline provider is explicitly named `DEMO_INTERPRETATION_PROVIDER`. It
+recognizes only the synthetic AstraNet demonstration pattern and produces a
+versioned proposal containing its identity, source context, candidate mapping,
+confidence, explanation, and provider version. It is not an AI model and its
+confidence value is not an accuracy claim.
+
+The existing mapping review endpoints accept `proposal_id` so approval,
+correction, and rejection remain human actions while preserving proposal
+history. Approval stores a versioned mapping but reports unchanged compliance;
+only explicit re-analysis applies the mapping through the hardened identity
+checks and deterministic control engine. An AI proposal alone cannot create
+PASS or FAIL, and AI text is never used as compliance evidence.
+
+The boundary remains:
+
+```text
+AI proposes → deterministic engine validates → evidence proves.
+```
 
 P0.12 remediation simulation is exposed separately through:
 
@@ -121,6 +178,30 @@ POST /api/demo/reset
 It deletes local demo analyses, mappings, and simulations while preserving the
 SQLite schema. The route returns `DEMO_RESET_DISABLED` with HTTP 403 when
 `APP_ENV=production`. It is not a production database-administration endpoint.
+
+## Device and configuration context
+
+Each successful upload creates a `Device` observation and a linked
+`Configuration` record in the local SQLite store. The analysis response keeps
+the existing device fields and adds a configuration summary containing its ID,
+device association, source filename, SHA-256 fingerprint, detected vendor,
+parser status, and timestamps. Raw uploaded text remains transient.
+
+The read APIs are:
+
+```http
+GET /api/devices/{device_id}
+GET /api/devices/{device_id}/analyses
+GET /api/configurations/{configuration_id}
+GET /api/parser-capabilities
+```
+
+Repeated uploads with the same reliable hostname/vendor identity reuse the
+device ID and create separate configuration and analysis records. Identical
+content is marked with `duplicate_of_configuration_id`; no analysis history is
+deleted. An upload may submit `device_id` to associate with an existing device,
+and vendor mismatch is rejected. Missing hostname produces a separate local
+observation because no stable device identity was detected.
 
 ## Manual test
 

@@ -1,11 +1,12 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StringConstraints, model_validator
 
 from .evidence import EvidenceRecord
 from .enums import ComplianceResult, PatternStatus
 from .security_ir import RecognizedPattern, SecurityIR, SourceLocation, UnknownPattern
+from .inventory import Configuration
 
 
 class HealthResponse(BaseModel):
@@ -36,6 +37,43 @@ class ControlEvaluation(BaseModel):
     conditions: list[ControlCondition] = Field(default_factory=list)
 
 
+ControlCategory = Literal[
+    "MANAGEMENT_ACCESS", "LOGGING_MONITORING", "AUTHENTICATION",
+    "CREDENTIAL_PROTECTION", "TIME_SYNCHRONIZATION", "NETWORK_SECURITY",
+    "CONFIGURATION_SECURITY", "CRYPTOGRAPHY",
+]
+ControlSeverity = Literal["LOW", "MEDIUM", "HIGH", "CRITICAL"]
+ControlVendor = Literal["cisco_iosxe", "fortigate_fortios", "paloalto_panos", "astranet"]
+NonBlankText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class FrameworkMapping(BaseModel):
+    """Informational reference; presence does not verify an official mapping."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    framework_name: NonBlankText
+    framework_version: NonBlankText | None = None
+    reference_id: NonBlankText
+    title: NonBlankText | None = None
+    description: NonBlankText | None = None
+
+
+class EvidenceRequirements(BaseModel):
+    """Advisory presentation metadata, not an evidence filter or evaluation input."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    include_paths: list[NonBlankText] = Field(default_factory=list)
+    display_fields: list[Literal[
+        "actual", "expected", "source_file", "line_start", "line_end",
+        "raw_excerpt", "evidence_source", "result", "condition_result",
+    ]] = Field(default_factory=lambda: [
+        "actual", "expected", "source_file", "line_start", "line_end",
+        "raw_excerpt", "evidence_source", "result", "condition_result",
+    ])
+
+
 class ControlDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -46,6 +84,27 @@ class ControlDefinition(BaseModel):
     evaluation: ControlEvaluation
     evidence_rule: dict[str, Any] = Field(default_factory=dict)
     remediation: dict[str, str] = Field(default_factory=dict)
+    category: ControlCategory | None = None
+    severity: ControlSeverity | None = None
+    enabled: StrictBool = True
+    applicable_vendors: list[ControlVendor] = Field(default_factory=list)
+    framework_mappings: list[FrameworkMapping] = Field(default_factory=list)
+    evidence_requirements: EvidenceRequirements | None = None
+    remediation_reference: dict[ControlVendor, NonBlankText] | None = None
+    diagnostic_of: NonBlankText | None = None
+
+    @model_validator(mode="after")
+    def validate_evidence_requirements(self) -> "ControlDefinition":
+        # Legacy definitions keep their original shape and evaluation behavior.
+        if self.evidence_requirements is not None:
+            paths = self.evidence_requirements.include_paths
+            conditions = {condition.path for condition in self.evaluation.conditions}
+            if len(paths) != len(set(paths)) or set(paths) != conditions:
+                raise ValueError("evidence requirements must cover exactly the evaluation properties")
+            legacy_paths = self.evidence_rule.get("include_paths")
+            if legacy_paths is not None and set(legacy_paths) != set(paths):
+                raise ValueError("evidence_rule and evidence_requirements must agree")
+        return self
 
 
 class ControlEvaluationResult(BaseModel):
@@ -85,6 +144,7 @@ class AnalysisDeviceResponse(BaseModel):
     device_model: str | None = None
     serial_number: str | None = None
     device_id: str | None = None
+    platform: str | None = None
 
 
 class ControlResultSummary(BaseModel):
@@ -98,6 +158,7 @@ class ControlResultSummary(BaseModel):
     expected: Any
     actual: Any
     explanation: str
+    diagnostic_of: str | None = None
 
 
 class AnalysisResponse(BaseModel):
@@ -109,6 +170,7 @@ class AnalysisResponse(BaseModel):
     filename: str
     vendor: str
     device: AnalysisDeviceResponse
+    configuration: Configuration | None = None
     results: list[ControlResultSummary] = Field(default_factory=list)
     evidence: list[EvidenceRecord] = Field(default_factory=list)
     unknown_patterns: list[UnknownPattern] = Field(default_factory=list)

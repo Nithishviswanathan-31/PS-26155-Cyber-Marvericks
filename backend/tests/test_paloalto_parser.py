@@ -151,9 +151,10 @@ def test_three_vendor_normalization_uses_common_property_names() -> None:
         (PROJECT_ROOT / "configs" / "fortigate" / "compliant.conf").read_text(encoding="utf-8")
     )
     paloalto = PaloAltoParser.parse(read_config("compliant.conf"))
-    expected_properties = set(cisco.normalized_properties)
-    assert expected_properties == set(fortigate.normalized_properties)
-    assert expected_properties == set(paloalto.normalized_properties)
+    common = {"management.ssh_enabled", "management.telnet_enabled", "logging.enabled", "password_protection.enabled", "time_sync.ntp_enabled"}
+    assert set(cisco.normalized_properties) == common | {"logging.buffered_enabled"}
+    assert set(fortigate.normalized_properties) == common | {"credentials.password_policy_enabled"}
+    assert set(paloalto.normalized_properties) == common | {"credentials.username_exclusion_enabled"}
     assert "management.ssh_enabled" in paloalto.normalized_properties
 
 

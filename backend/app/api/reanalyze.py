@@ -2,9 +2,9 @@ import logging
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, status, Request
 
-from ..config import load_demo_controls
+from ..config import load_demo_controls, CatalogueError
 from ..domain.api_errors import ApiError, ApiErrorCode
 from ..domain.control_engine import DeterministicControlEngine
 from ..domain.evidence import build_evidence
@@ -16,6 +16,7 @@ from ..storage.database import (
     get_active_approved_mapping,
     get_analysis_bundle,
     get_latest_mapping,
+    record_knowledge_usage,
     save_analysis_result,
 )
 
@@ -25,7 +26,7 @@ router = APIRouter(prefix="/api/analyze", tags=["analysis"])
 
 
 @router.post("/{analysis_id}/reanalyze", response_model=AnalysisResponse)
-def reanalyze_configuration(analysis_id: str) -> AnalysisResponse:
+def reanalyze_configuration(analysis_id: str, request: Request) -> AnalysisResponse:
     """Explicitly re-analyze an immutable original using active approved mappings."""
 
     bundle = get_analysis_bundle(analysis_id)
@@ -87,15 +88,18 @@ def reanalyze_configuration(analysis_id: str) -> AnalysisResponse:
         raise ApiError(status.HTTP_409_CONFLICT, ApiErrorCode.INVALID_MAPPING, f"The approved mapping could not be applied: {exc}") from exc
 
     try:
+        controls = load_demo_controls()
         evaluations = DeterministicControlEngine().evaluate_all(
             enriched_ir,
-            load_demo_controls(),
+            controls,
         )
         evidence = [
             item
             for evaluation in evaluations
             for item in build_evidence(enriched_ir, evaluation)
         ]
+    except CatalogueError:
+        raise
     except Exception as exc:
         logger.exception("Re-analysis evaluation failed for %s", analysis_id)
         raise ApiError(status.HTTP_500_INTERNAL_SERVER_ERROR, ApiErrorCode.REANALYSIS_FAILED, "Re-analysis evaluation or evidence generation failed.") from exc
@@ -106,11 +110,13 @@ def reanalyze_configuration(analysis_id: str) -> AnalysisResponse:
     response = AnalysisResponse(
         analysis_id=child_analysis_id,
         filename=original_response.filename,
+        configuration=original_response.configuration,
         vendor=enriched_ir.device.vendor,
         device=AnalysisDeviceResponse(
             hostname=enriched_ir.device.hostname,
             version=enriched_ir.device.version,
             device_model=enriched_ir.device.device_model,
+            platform=enriched_ir.device.platform,
             serial_number=enriched_ir.device.serial_number,
             device_id=enriched_ir.device.device_id,
         ),
@@ -118,6 +124,7 @@ def reanalyze_configuration(analysis_id: str) -> AnalysisResponse:
             ControlResultSummary(
                 control_id=evaluation.control_id,
                 control_name=evaluation.control_name,
+                diagnostic_of=next(c.diagnostic_of for c in controls if c.control_id == evaluation.control_id),
                 result=evaluation.result,
                 expected=evaluation.expected,
                 actual=evaluation.actual,
@@ -143,9 +150,15 @@ def reanalyze_configuration(analysis_id: str) -> AnalysisResponse:
             vendor=response.vendor,
             response=response.model_dump(mode="json"),
             security_ir=enriched_ir.model_dump(mode="json"),
+            actor_id=getattr(request.state, "actor", {}).get("user_id"),
         )
     except Exception as exc:
         logger.exception("Could not persist re-analysis %s", child_analysis_id)
         raise ApiError(status.HTTP_500_INTERNAL_SERVER_ERROR, ApiErrorCode.STORAGE_FAILURE, "The re-analysis result could not be stored.") from exc
+
+    # Audit-only metric: it is written after the immutable analysis snapshot
+    # and is never consulted during deterministic evaluation.
+    for mapping in mappings:
+        record_knowledge_usage(mapping.mapping_id, mapping.version, applied=True)
 
     return response

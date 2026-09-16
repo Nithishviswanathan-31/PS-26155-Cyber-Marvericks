@@ -1,3 +1,4 @@
+import { authFetch as fetch } from "./http";
 import {
   API_BASE_URL,
   type ComplianceResult,
@@ -16,6 +17,10 @@ export interface RemediationDefinition {
   target_properties: string[];
   expected_state: Record<string, boolean>;
   risk_level: "LOW" | "MEDIUM" | "HIGH";
+  supported: true;
+  transformation_type: "SECURITY_IR_PROPERTY_SIMULATION";
+  safety_classification: "SIMULATION_ONLY";
+  simulation_capability: "DETERMINISTIC";
   simulation_only: true;
 }
 
@@ -45,6 +50,10 @@ export interface SimulationResponse {
   results: ControlResultSummary[];
   evidence: EvidenceRecord[];
   message: string;
+  original_configuration_fingerprint: string | null;
+  target_vendor: string | null;
+  initiated_by: string | null;
+  compliance_final: false;
 }
 
 export class RemediationApiError extends Error {
@@ -93,4 +102,8 @@ export async function simulateRemediation(analysisId: string, remediationId: str
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ remediation_id: remediationId }),
   });
+}
+
+export async function reanalyzeSimulation(simulationId: string): Promise<import("./analyze").AnalysisResponse> {
+  return request<import("./analyze").AnalysisResponse>(`/api/remediation/simulations/${encodeURIComponent(simulationId)}/reanalyze`, { method: "POST" });
 }

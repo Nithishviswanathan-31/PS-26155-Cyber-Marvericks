@@ -51,6 +51,7 @@ def test_fortigate_normalized_properties_are_supported() -> None:
         "management.telnet_enabled": False,
         "logging.enabled": True,
         "password_protection.enabled": True,
+        "credentials.password_policy_enabled": True,
         "time_sync.ntp_enabled": True,
     }
     assert noncompliant.normalized_properties == {
@@ -58,6 +59,7 @@ def test_fortigate_normalized_properties_are_supported() -> None:
         "management.telnet_enabled": True,
         "logging.enabled": False,
         "password_protection.enabled": False,
+        "credentials.password_policy_enabled": False,
         "time_sync.ntp_enabled": False,
     }
 
@@ -142,8 +144,11 @@ def test_fortigate_noncompliant_parser_engine_integration() -> None:
 def test_cisco_and_fortigate_use_identical_normalized_property_names() -> None:
     cisco_ir = CiscoParser.parse((PROJECT_ROOT / "configs" / "cisco" / "compliant.conf").read_text(encoding="utf-8"))
     fortigate_ir = FortiGateParser.parse(read_config("compliant.conf"))
-    assert set(cisco_ir.normalized_properties) == set(fortigate_ir.normalized_properties)
-    assert set(cisco_ir.provenance) == set(fortigate_ir.provenance)
+    common = {"management.ssh_enabled", "management.telnet_enabled", "logging.enabled", "password_protection.enabled", "time_sync.ntp_enabled"}
+    assert set(cisco_ir.normalized_properties) == common | {"logging.buffered_enabled"}
+    assert set(fortigate_ir.normalized_properties) == common | {"credentials.password_policy_enabled"}
+    assert set(cisco_ir.provenance) == set(cisco_ir.normalized_properties)
+    assert set(fortigate_ir.provenance) == set(fortigate_ir.normalized_properties)
     assert fortigate_ir.normalized_properties["management.ssh_enabled"] is True
 
 

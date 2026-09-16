@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { useAuth } from "../auth/AuthProvider";
 
 import {
   Alert,
@@ -34,6 +35,10 @@ import { Close, Description, Download, UploadFile } from "@mui/icons-material";
 
 import {
   analyzeConfiguration,
+  analyzeBatch,
+  getAnalysis,
+  type BatchAnalysis,
+  type BatchItem,
   type AnalysisResponse,
   type ComplianceResult,
   type ControlResultSummary,
@@ -44,11 +49,14 @@ import {
 import {
   approveMapping,
   correctAndApproveMapping,
+  deactivateKnowledge,
+  getPatternKnowledge,
   MappingApiError,
   rejectMapping,
   suggestMapping,
   type CandidateMappingSuggestion,
   type MappingDecisionResponse,
+  type KnowledgeClassification,
   type SemanticMapping,
 } from "../api/mappings";
 
@@ -58,6 +66,7 @@ import {
   getRemediations,
   RemediationApiError,
   simulateRemediation,
+  reanalyzeSimulation,
   type RemediationDefinition,
   type SimulationResponse,
 } from "../api/remediation";
@@ -67,6 +76,7 @@ import {
   generatePdfReport,
   ReportApiError,
 } from "../api/reports";
+import { AnalysisIntegrityStatus } from "./IntegrityPage";
 
 type WorkflowState =
   | "IDLE"
@@ -150,12 +160,21 @@ const validateFile = (file: File): string | null => {
 export default function AnalyzeConfigurationPage({
   onAnalysisCompleted,
 }: AnalyzeConfigurationPageProps) {
+  const { user } = useAuth();
+  const canAudit = user.role !== "REVIEWER";
+  const canReview = user.role !== "AUDITOR";
+  const [storedAnalysisId, setStoredAnalysisId] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const batchInputRef = useRef<HTMLInputElement>(null);
 
   const [workflowState, setWorkflowState] =
     useState<WorkflowState>("IDLE");
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [batchFiles, setBatchFiles] = useState<File[]>([]);
+  const [batch, setBatch] = useState<BatchAnalysis | null>(null);
+  const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
+  const [batchBusy, setBatchBusy] = useState(false);
   const [analysis, setAnalysis] = useState<AnalysisResponse | null>(null);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -173,11 +192,12 @@ export default function AnalyzeConfigurationPage({
 
   const [mappingDecision, setMappingDecision] =
     useState<MappingDecisionResponse | null>(null);
+  const [knowledge, setKnowledge] = useState<KnowledgeClassification | null>(null);
 
   const [mappingBusy, setMappingBusy] = useState(false);
   const [mappingError, setMappingError] = useState<string | null>(null);
 
-  const [reviewerId, setReviewerId] = useState("demo-reviewer");
+  const [reviewerId, setReviewerId] = useState(user.offline ? "demo-reviewer" : user.user_id);
 
   const [reanalysis, setReanalysis] =
     useState<AnalysisResponse | null>(null);
@@ -197,6 +217,7 @@ export default function AnalyzeConfigurationPage({
     useState<SimulationResponse | null>(null);
 
   const [simulationBusy, setSimulationBusy] = useState(false);
+  const [simulationReanalysis, setSimulationReanalysis] = useState<AnalysisResponse | null>(null);
 
   const [reportBusy, setReportBusy] = useState(false);
   const [reportError, setReportError] = useState<string | null>(null);
@@ -283,6 +304,7 @@ export default function AnalyzeConfigurationPage({
       setReanalysis(null);
       setReanalysisError(null);
       setSimulation(null);
+      setSimulationReanalysis(null);
       setReportError(null);
       setSelectedResult(null);
       setWorkflowState("SUCCESS");
@@ -317,6 +339,41 @@ export default function AnalyzeConfigurationPage({
     }
   };
 
+  const handleBatchAnalyze = async () => {
+    if (!batchFiles.length || batchBusy) return;
+    setBatchBusy(true);
+    setErrorMessage(null);
+    try {
+      const result = await analyzeBatch(batchFiles);
+      setBatch(result.batch);
+      setBatchItems(result.items);
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof AnalysisApiError ? error.message : "The batch could not be analyzed.");
+    } finally {
+      setBatchBusy(false);
+    }
+  };
+
+  const openBatchAnalysis = async (analysisId: string) => {
+    try {
+      const result = await getAnalysis(analysisId);
+      setAnalysis(result);
+      setCandidate(null);
+      setKnowledge(null);
+      setMappingDecision(null);
+      setReviewMapping({});
+      setSimulation(null);
+      setSimulationReanalysis(null);
+      setRemediations([]);
+      setMappingError(null);
+      setReanalysis(null);
+      setSelectedResult(null);
+      onAnalysisCompleted(result);
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof AnalysisApiError ? error.message : "The analysis could not be loaded.");
+    }
+  };
+
   const removeFile = () => {
     setSelectedFile(null);
     setAnalysis(null);
@@ -346,7 +403,10 @@ export default function AnalyzeConfigurationPage({
     try {
       const suggestion = await suggestMapping(patternId);
 
+      const retrievedKnowledge = await getPatternKnowledge(patternId);
+
       setCandidate(suggestion);
+      setKnowledge(retrievedKnowledge);
       setReviewMapping({
         ...suggestion.semantic_mapping,
       });
@@ -384,18 +444,21 @@ export default function AnalyzeConfigurationPage({
           ? await approveMapping(
               patternId,
               reviewMapping,
-              reviewerId.trim()
+              reviewerId.trim(),
+              candidate.proposal_id
             )
           : action === "correct"
             ? await correctAndApproveMapping(
-                patternId,
-                reviewMapping,
-                reviewerId.trim()
+              patternId,
+              reviewMapping,
+              reviewerId.trim(),
+              candidate.proposal_id
               )
             : await rejectMapping(
-                patternId,
-                reviewerId.trim(),
-                "Rejected during human review."
+              patternId,
+              reviewerId.trim(),
+              "Rejected during human review.",
+              candidate.proposal_id
               );
 
       setMappingDecision(decision);
@@ -405,6 +468,20 @@ export default function AnalyzeConfigurationPage({
           ? error.message
           : "The mapping decision could not be stored."
       );
+    } finally {
+      setMappingBusy(false);
+    }
+  };
+
+  const handleDeactivateKnowledge = async () => {
+    if (!mappingDecision?.mapping.mapping_id || !reviewerId.trim() || mappingBusy) return;
+    setMappingBusy(true);
+    setMappingError(null);
+    try {
+      await deactivateKnowledge(mappingDecision.mapping.mapping_id, reviewerId.trim());
+      setMappingDecision((current) => current ? { ...current, mapping: { ...current.mapping, active: false, status: "INACTIVE" } } : current);
+    } catch (error: unknown) {
+      setMappingError(error instanceof MappingApiError ? error.message : "Knowledge could not be deactivated.");
     } finally {
       setMappingBusy(false);
     }
@@ -472,6 +549,19 @@ export default function AnalyzeConfigurationPage({
           ? error.message
           : "The remediation simulation could not be completed."
       );
+    } finally {
+      setSimulationBusy(false);
+    }
+  };
+
+  const handleSimulationReanalysis = async () => {
+    if (!simulation || simulationBusy) return;
+    setSimulationBusy(true);
+    setRemediationError(null);
+    try {
+      setSimulationReanalysis(await reanalyzeSimulation(simulation.simulation_id));
+    } catch (error: unknown) {
+      setRemediationError(error instanceof RemediationApiError ? error.message : "The simulation could not be re-analyzed.");
     } finally {
       setSimulationBusy(false);
     }
@@ -548,6 +638,31 @@ export default function AnalyzeConfigurationPage({
         modification · AI suggestions require human approval ·
         Compliance results are deterministic.
       </Alert>
+
+      <Card><CardContent><Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+        <TextField label="Stored analysis ID" value={storedAnalysisId} onChange={event => setStoredAnalysisId(event.target.value)} fullWidth />
+        <Button disabled={!storedAnalysisId.trim()} onClick={() => void openBatchAnalysis(storedAnalysisId.trim())}>Open analysis</Button>
+      </Stack>{errorMessage && <Alert severity="error">{errorMessage}</Alert>}</CardContent></Card>
+      {canAudit && <><Card>
+        <CardContent>
+          <Stack spacing={1.5}>
+            <Typography variant="h6">Batch analysis</Typography>
+            <Typography variant="body2" color="text.secondary">
+              Select up to 25 bounded configuration files. Each file is processed independently and keeps its own result, evidence, or error.
+            </Typography>
+            <input ref={batchInputRef} hidden multiple type="file" accept=".conf,.cfg,.txt" onChange={(event) => setBatchFiles(Array.from(event.target.files ?? []))} />
+            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
+              <Button variant="outlined" onClick={() => batchInputRef.current?.click()}>Select files</Button>
+              <Typography variant="body2" color="text.secondary">{batchFiles.length ? `${batchFiles.length} file(s) selected` : "No files selected"}</Typography>
+              <Button variant="contained" disabled={!batchFiles.length || batchBusy} onClick={handleBatchAnalyze}>{batchBusy ? "Processing…" : "Analyze batch"}</Button>
+            </Stack>
+            {batch && <Alert severity={batch.status === "COMPLETED" ? "success" : "warning"}>
+              Batch {batch.batch_id}: {batch.status} · {batch.successful_items} successful · {batch.failed_items} failed · {batch.duplicate_items} duplicate
+            </Alert>}
+            {batchItems.length > 0 && <Table size="small"><TableHead><TableRow><TableCell>File</TableCell><TableCell>Status</TableCell><TableCell>Compliance</TableCell><TableCell>Error</TableCell><TableCell /></TableRow></TableHead><TableBody>{batchItems.map((item) => <TableRow key={item.batch_item_id}><TableCell>{item.source_filename}</TableCell><TableCell>{item.processing_status}</TableCell><TableCell>{item.compliance_status ?? "—"}</TableCell><TableCell>{item.error_message ?? "—"}</TableCell><TableCell>{item.analysis_id && <Button size="small" onClick={() => openBatchAnalysis(item.analysis_id as string)}>Open</Button>}</TableCell></TableRow>)}</TableBody></Table>}
+          </Stack>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardContent sx={{ p: { xs: 2, md: 3 } }}>
@@ -703,6 +818,7 @@ export default function AnalyzeConfigurationPage({
         </CardContent>
       </Card>
 
+      </>}
       {analysis && (
         <Stack spacing={2.5}>
           {isAstraNet && (
@@ -812,6 +928,10 @@ export default function AnalyzeConfigurationPage({
                       "Not available"}
                   </Typography>
                 </Grid>
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <Typography variant="caption" color="text.secondary">Platform</Typography>
+                  <Typography sx={{ mt: 0.5 }}>{analysis.device.platform ?? "Not available"}</Typography>
+                </Grid>
               </Grid>
 
               <Divider sx={{ my: 2 }} />
@@ -833,6 +953,15 @@ export default function AnalyzeConfigurationPage({
               >
                 {analysis.analysis_id}
               </Typography>
+              <AnalysisIntegrityStatus analysisId={analysis.analysis_id} />
+              {analysis.configuration && (
+                <Typography variant="caption" component="div" sx={{ mt: 1, overflowWrap: "anywhere" }}>
+                  Device: {analysis.configuration.device_id}<br />
+                  Configuration: {analysis.configuration.configuration_id}<br />
+                  Parse status: {analysis.configuration.parser_status}<br />
+                  SHA-256: {analysis.configuration.content_sha256}
+                </Typography>
+              )}
 
               <Button
                 variant="outlined"
@@ -965,7 +1094,7 @@ export default function AnalyzeConfigurationPage({
                             </Typography>
                           )}
 
-                          {!mappingDecision &&
+                          {canReview && !mappingDecision &&
                             !candidate && (
                               <Button
                                 variant="outlined"
@@ -1002,7 +1131,7 @@ export default function AnalyzeConfigurationPage({
                             color="secondary.main"
                             letterSpacing={1.2}
                           >
-                            AI SUGGESTION
+                            AI PROPOSAL · DEMO INTERPRETATION PROVIDER
                           </Typography>
 
                           <Typography
@@ -1017,6 +1146,8 @@ export default function AnalyzeConfigurationPage({
                             color="text.secondary"
                             sx={{ mt: 0.5 }}
                           >
+                            AI PROPOSAL IS NOT COMPLIANCE EVIDENCE. It is not deterministic evidence
+                            or a compliance result.
                             Candidate interpretation only.
                             Human approval is required; this
                             does not change compliance.
@@ -1030,6 +1161,21 @@ export default function AnalyzeConfigurationPage({
                           )}
                           % demo suggestion value
                         </Typography>
+
+                        {knowledge && (
+                          <Paper variant="outlined" sx={{ p: 1.25, bgcolor: "background.default" }}>
+                            <Typography variant="subtitle2">Adaptive Knowledge Review</Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              Exact matches: {knowledge.exact_matches.length} · Related knowledge: {knowledge.related_knowledge.length} · Conflicts: {knowledge.conflicts.length}
+                            </Typography>
+                            {knowledge.exact_matches.map((item) => (
+                              <Typography key={`${item.knowledge_id}-${item.version}`} variant="caption" display="block">
+                                EXACT · {item.vendor} · v{item.version} · {JSON.stringify(item.approved_mapping)} · reviewer {item.reviewer_id ?? "unknown"}
+                              </Typography>
+                            ))}
+                            {knowledge.conflicts.length > 0 && <Alert severity="warning" sx={{ mt: 1 }}>CONFLICT / REVIEW REQUIRED — no knowledge is applied automatically.</Alert>}
+                          </Paper>
+                        )}
 
                         <Typography variant="body2">
                           <strong>Reasoning:</strong>{" "}
@@ -1077,13 +1223,14 @@ export default function AnalyzeConfigurationPage({
                         <TextField
                           label="Reviewer identity"
                           value={reviewerId}
+                          slotProps={{ input: { readOnly: !user.offline } }}
                           onChange={(event) =>
                             setReviewerId(
                               event.target.value
                             )
                           }
                           size="small"
-                          helperText="Demo reviewer identity; approval is explicit."
+                          helperText={user.offline ? "Local demo identity; authentication is disabled." : "Authenticated account. The server records your identity."}
                         />
 
                         <Stack
@@ -1178,6 +1325,12 @@ export default function AnalyzeConfigurationPage({
                           the pattern remains UNKNOWN until
                           explicit re-analysis.
                         </Typography>
+
+                        {mappingDecision.mapping.active && (
+                          <Button variant="outlined" color="warning" onClick={handleDeactivateKnowledge} disabled={mappingBusy || !reviewerId.trim()}>
+                            Deactivate knowledge
+                          </Button>
+                        )}
 
                         {mappingDecision.mapping.status ===
                           "APPROVED" &&
@@ -1391,7 +1544,7 @@ export default function AnalyzeConfigurationPage({
             </Card>
           )}
 
-          {analysis.results.some(
+          {canAudit && analysis.results.some(
             (result) => result.result === "FAIL"
           ) && (
             <Card
@@ -1492,6 +1645,7 @@ export default function AnalyzeConfigurationPage({
                             size="small"
                             color="warning"
                           />
+                          <Chip label={remediation.safety_classification.replaceAll("_", " ")} size="small" color="info" />
                         </Stack>
 
                         <Typography variant="body2">
@@ -1507,6 +1661,7 @@ export default function AnalyzeConfigurationPage({
                             ", "
                           )}
                         </Typography>
+                        <Typography variant="caption" color="text.secondary">{remediation.remediation_id} · {remediation.vendor} · {remediation.simulation_capability}</Typography>
 
                         <Box
                           component="pre"
@@ -1565,11 +1720,13 @@ export default function AnalyzeConfigurationPage({
                         </Typography>
 
                         <Typography variant="h6">
-                          Before:{" "}
+                          SIMULATION PREVIEW — Before:{" "}
                           {simulation.before_result} ·
                           After:{" "}
                           {simulation.after_result}
                         </Typography>
+                        <Alert severity="warning"><strong>SIMULATION ONLY — NO DEVICE WAS MODIFIED</strong>. This preview is not a final compliance result.</Alert>
+                        <Typography variant="caption" color="text.secondary">Simulation ID: {simulation.simulation_id} · Actor: {simulation.initiated_by ?? "Not available"} · {new Date(simulation.created_at).toLocaleString()}<br />Configuration fingerprint: {simulation.original_configuration_fingerprint ?? "Not available"}</Typography>
 
                         <Typography
                           variant="body2"
@@ -1577,6 +1734,8 @@ export default function AnalyzeConfigurationPage({
                         >
                           {simulation.message}
                         </Typography>
+                        <Button variant="contained" onClick={() => void handleSimulationReanalysis()} disabled={simulationBusy}> {simulationBusy ? "Re-analyzing…" : "Re-analyze simulation"}</Button>
+                        {simulationReanalysis && <Alert severity="success"><strong>Deterministic re-analysis result</strong>: {simulationReanalysis.results.find(item => item.control_id === simulation.control_id)?.result ?? "UNKNOWN"}. Evidence is stored with analysis {simulationReanalysis.analysis_id}.</Alert>}
 
                         <Divider />
 
@@ -1742,6 +1901,11 @@ export default function AnalyzeConfigurationPage({
 
                           <TableCell>
                             {result.control_name}
+                            {result.diagnostic_of && (
+                              <Typography variant="caption" display="block" color="text.secondary">
+                                Diagnostic of {result.diagnostic_of}
+                              </Typography>
+                            )}
                           </TableCell>
 
                           <TableCell>

@@ -161,17 +161,20 @@ def test_property_can_be_traced_to_its_source_location() -> None:
     assert trace.provenance.raw_excerpt == "transport input ssh"
 
 
-def test_control_yaml_loads_four_demo_controls() -> None:
+def test_control_yaml_loads_six_controls_preserving_original_four() -> None:
     controls = load_demo_controls()
 
-    assert len(controls) == 4
+    assert len(controls) == 6
     assert [control.control_id for control in controls] == [
         "CTRL-001",
         "CTRL-002",
         "CTRL-003",
         "CTRL-004",
+        "CTRL-005",
+        "CTRL-006",
     ]
-    assert all(control.remediation for control in controls)
+    assert all(control.remediation for control in controls[:4])
+    assert all(not control.remediation for control in controls[4:])
     assert Path("controls/demo_controls.yaml").exists()
 
 

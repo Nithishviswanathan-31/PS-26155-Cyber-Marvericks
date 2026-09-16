@@ -95,13 +95,15 @@ def test_ctrl_004_fail() -> None:
     assert result.result is ComplianceResult.FAIL
 
 
-def test_all_four_controls_evaluate_in_control_order() -> None:
+def test_all_six_controls_evaluate_in_control_order() -> None:
     results = ENGINE.evaluate_all(make_security_ir(), load_demo_controls())
     assert [result.control_id for result in results] == [
         "CTRL-001",
         "CTRL-002",
         "CTRL-003",
         "CTRL-004",
+        "CTRL-005",
+        "CTRL-006",
     ]
     assert all(result.result is ComplianceResult.PASS for result in results)
 
@@ -186,4 +188,4 @@ def test_same_input_produces_identical_result_and_evidence() -> None:
 def test_controls_are_loaded_from_yaml_not_hard_coded_in_engine() -> None:
     controls_path = Path("controls/demo_controls.yaml")
     assert controls_path.exists()
-    assert set(CONTROLS) == {"CTRL-001", "CTRL-002", "CTRL-003", "CTRL-004"}
+    assert set(CONTROLS) == {"CTRL-001", "CTRL-002", "CTRL-003", "CTRL-004", "CTRL-005", "CTRL-006"}

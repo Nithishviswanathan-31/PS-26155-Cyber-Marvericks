@@ -68,6 +68,8 @@ class DeviceInfo(BaseModel):
     device_model: str | None = None
     serial_number: str | None = None
     device_id: str | None = None
+    platform: str | None = None
+    metadata_provenance: dict[str, SourceLocation] = Field(default_factory=dict)
 
     @field_validator("vendor")
     @classmethod

@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-from collections import Counter
 from datetime import datetime, timezone
 from html import escape
 from io import BytesIO
 from typing import Any
-from uuid import uuid4
 
 from ..domain.mapping import MappingVersion
 from ..domain.remediation import SimulationResponse
 from ..domain.schemas import AnalysisResponse
+from ..domain.coverage import coverage_counts
 
 
 class ReportGenerationError(ValueError):
@@ -63,6 +62,9 @@ def generate_analysis_pdf(
     *,
     mapping: MappingVersion | None = None,
     simulation: SimulationResponse | None = None,
+    integrity: dict[str, Any] | None = None,
+    report_id: str,
+    generated_at: str,
 ) -> bytes:
     """Render stored analysis data only; this function never evaluates controls."""
 
@@ -101,8 +103,6 @@ def generate_analysis_pdf(
         raise ReportGenerationError("The stored simulation does not belong to this analysis.")
 
     buffer = BytesIO()
-    generated_at = datetime.now(timezone.utc).isoformat()
-    report_id = f"report-{uuid4().hex[:12]}"
     styles = getSampleStyleSheet()
     title_style = ParagraphStyle("ReportTitle", parent=styles["Title"], fontName="PS26155VeraBd", fontSize=20, leading=25, textColor=colors.HexColor("#12304a"), alignment=TA_CENTER, spaceAfter=12)
     section_style = ParagraphStyle("Section", parent=styles["Heading1"], fontName="PS26155VeraBd", fontSize=15, leading=19, textColor=colors.HexColor("#12304a"), spaceBefore=4, spaceAfter=8)
@@ -137,9 +137,14 @@ def generate_analysis_pdf(
         ("Analysis ID", analysis.analysis_id),
         ("Analysis Date", "Not available in stored response"),
         ("Report Generated At", generated_at),
+        ("Integrity Status", integrity.get("status") if integrity else "NOT VERIFIED"),
+        ("Analysis Integrity Hash", integrity.get("analysis_hash") if integrity else "Not available"),
+        ("Ledger Record", integrity.get("ledger_record_id") if integrity else "Not available"),
+        ("Report Version", integrity.get("report_version") if integrity else "Not available"),
     ], label_style, value_style))
     story.append(Spacer(1, 12))
-    counts = Counter(result.result.value for result in analysis.results)
+    counts = coverage_counts(analysis.results)
+    story.append(Paragraph("Independent requirement totals; diagnostic children are listed below and excluded from these totals.", body_style))
     summary_data = [[_paragraph(state, header_style) for state in ("PASS", "FAIL", "UNKNOWN", "N/A")], [_paragraph(counts.get("PASS", 0), value_style), _paragraph(counts.get("FAIL", 0), value_style), _paragraph(counts.get("UNKNOWN", 0), value_style), _paragraph(counts.get("NOT_APPLICABLE", 0), value_style)]]
     summary_table = Table(summary_data, colWidths=[125, 125, 125, 125], hAlign="LEFT")
     summary_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#12304a")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#b8c9d9")), ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d5e0ea")), ("ALIGN", (0, 0), (-1, -1), "CENTER"), ("TOPPADDING", (0, 0), (-1, -1), 8), ("BOTTOMPADDING", (0, 0), (-1, -1), 8)]))
@@ -152,7 +157,8 @@ def generate_analysis_pdf(
     control_rows = [[_paragraph(value, header_style) for value in ("Control ID", "Control Name", "Result", "Evidence")]]
     for result in analysis.results:
         available = any(item.control_id == result.control_id for item in analysis.evidence)
-        control_rows.append([_paragraph(result.control_id, small_style), _paragraph(result.control_name, small_style), _paragraph(result.result.value, label_style), _paragraph("Available" if available else "Not available", small_style)])
+        name = result.control_name + (f" (diagnostic of {result.diagnostic_of})" if result.diagnostic_of else "")
+        control_rows.append([_paragraph(result.control_id, small_style), _paragraph(name, small_style), _paragraph(result.result.value, label_style), _paragraph("Available" if available else "Not available", small_style)])
     control_table = Table(control_rows, colWidths=[75, 245, 80, 100], repeatRows=1, hAlign="LEFT")
     control_table.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#12304a")), ("TEXTCOLOR", (0, 0), (-1, 0), colors.white), ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#b8c9d9")), ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#d5e0ea")), ("VALIGN", (0, 0), (-1, -1), "TOP"), ("TOPPADDING", (0, 0), (-1, -1), 7), ("BOTTOMPADDING", (0, 0), (-1, -1), 7)]))
     story.append(control_table)

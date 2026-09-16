@@ -1,67 +1,41 @@
-# P0.12 Safe Remediation Simulation
+# Safe Remediation Simulation
 
-P0.12 demonstrates a safe remediation loop for the emergency MVP:
+## Implemented deterministic capabilities
 
-```text
-FAIL finding
-  → deterministic remediation recommendation
-  → explicit human simulation request
-  → deep copy of Security IR
-  → controlled property transformation
-  → deterministic re-audit
-  → fresh before/after result and evidence
-```
+The V2 prototype supports parser-backed, Security IR-only simulations for Cisco IOS/IOS-XE, FortiGate/FortiOS, and Palo Alto/PAN-OS:
+
+- `CTRL-001` secure management transport: SSH enabled and Telnet disabled.
+- `CTRL-002` audit logging: logging enabled.
+- `CTRL-003` credential protection: credential protection enabled.
+- `CTRL-004` time synchronization: NTP enabled.
+
+Each capability has a remediation ID, vendor/control identity, safety classification, deterministic transformation type, and simulation-only status. Unsupported vendor/control combinations, including AstraNet remediation, are unavailable rather than invented.
 
 ## Safety boundary
 
-Every remediation has `simulation_only: true`. The API accepts only a
-remediation identifier and never accepts executable commands. The backend has
-no SSH, Telnet, Netmiko, Paramiko, firewall-write, or vendor-management write
-integration. Command strings are display-only guidance. No production device is
-contacted or modified.
+**SIMULATION ONLY - NO REAL DEVICE IS MODIFIED.** Every transformation applies to a deep copy of stored Security IR. Command text is display-only guidance; the backend has no SSH, Telnet, device API, Netmiko, Paramiko, firewall-write, or vendor-management write integration.
 
-## Supported MVP recommendations
+The original analysis remains unchanged. A simulation records its ID, original analysis, configuration fingerprint, vendor, authenticated actor, timestamp, before/after values, evidence provenance, and integrity linkage.
 
-The current deterministic catalogue supports `CTRL-001 Secure management
-transport` for:
+## Required deterministic workflow
 
-- Cisco IOS/IOS-XE — `transport input ssh`
-- FortiGate/FortiOS — reviewed `allowaccess` guidance with SSH and without Telnet
-- Palo Alto/PAN-OS — reviewed interface-management-profile guidance with SSH and
-  without Telnet
+```text
+FAIL finding -> simulation preview -> explicit remediation re-analysis -> new deterministic analysis result and evidence
+```
 
-The transformation targets the common properties
-`management.ssh_enabled = true` and `management.telnet_enabled = false`. Other
-failed controls return no available remediation rather than invented commands.
-AstraNet remediation is not implemented.
+A simulation has `compliance_final: false`; it never creates a final PASS or FAIL. Only explicit re-analysis of the simulated copy produces the final deterministic simulated result.
 
 ## API
 
 ```http
+GET  /api/remediation/capabilities
 GET  /api/remediation/{analysis_id}
 POST /api/remediation/{analysis_id}/simulate
+POST /api/remediation/simulations/{simulation_id}/reanalyze
 ```
 
-The GET operation returns recommendations only for explicit FAIL findings. The
-POST operation creates an independent `simulation_id`, stores the result in the
-SQLite `simulation_results` table, and returns the original `before_result`,
-deterministic `after_result`, simulated property changes, re-audit summaries,
-and fresh evidence marked `SIMULATED_REMEDIATION`.
+Simulation evidence is labelled `SIMULATED_REMEDIATION`; original source provenance remains available under `original_*` evidence fields.
 
-For simulated properties, original source file/line/raw excerpt values are
-preserved under `original_*` evidence fields. The simulation does not fabricate
-a source line for a value that was not present in the original configuration.
+## Demo-only limitations and future work
 
-## Manual demo
-
-```bash
-curl -X POST \
-  -F "file=@configs/cisco/noncompliant.conf" \
-  http://127.0.0.1:8000/api/analyze
-```
-
-Use the returned `analysis_id` to list remediation, then POST the returned
-`remediation_id` to `/api/remediation/{analysis_id}/simulate`.
-
-The expected primary result is `FAIL → PASS` for CTRL-001, while the original
-analysis remains `FAIL` and unchanged.
+This offline prototype does not generate production configuration, connect to devices, or execute commands. AstraNet remediation is not implemented. Future work requires independently reviewed vendor-specific configuration generation and a separately authorized deployment workflow.

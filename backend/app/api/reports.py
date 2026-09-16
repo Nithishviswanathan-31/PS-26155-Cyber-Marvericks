@@ -1,6 +1,7 @@
 import logging
+from uuid import uuid4
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Response, status, Request
 
 from ..domain.api_errors import ApiError, ApiErrorCode
 from ..domain.mapping import MappingVersion
@@ -11,6 +12,11 @@ from ..storage.database import (
     get_analysis_bundle,
     get_latest_simulation_for_analysis,
     get_mapping_versions,
+    append_integrity_record,
+    get_latest_integrity_record,
+    verify_integrity_record,
+    save_report_metadata,
+    list_report_metadata,
 )
 
 
@@ -18,8 +24,13 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
 
+@router.get("/{analysis_id}")
+def report_history(analysis_id: str):
+    return {"items": list_report_metadata(analysis_id)}
+
+
 @router.get("/{analysis_id}/pdf")
-def generate_pdf_report(analysis_id: str) -> Response:
+def generate_pdf_report(analysis_id: str, request: Request) -> Response:
     """Export stored analysis data without recalculating compliance."""
 
     bundle = get_analysis_bundle(analysis_id)
@@ -58,8 +69,24 @@ def generate_pdf_report(analysis_id: str) -> Response:
         except (TypeError, ValueError) as exc:
             raise ApiError(status.HTTP_409_CONFLICT, ApiErrorCode.REPORT_DATA_INCOMPLETE, "The simulation data is invalid for this report.") from exc
 
+    analysis_integrity = verify_integrity_record("ANALYSIS", analysis_id)
+    analysis_record = get_latest_integrity_record("ANALYSIS", analysis_id)
+    report_id = f"report-{uuid4().hex[:12]}"
+    report_record = append_integrity_record(
+        "REPORT", report_id,
+        {"analysis_id": analysis_id, "analysis_hash": analysis_record["content_hash"] if analysis_record else None,
+         "mapping_id": analysis.mapping_id, "mapping_version": analysis.mapping_version,
+         "simulation_id": simulation.simulation_id if simulation else None},
+        actor_id=getattr(request.state, "actor", {}).get("user_id"),
+    )
+    integrity = {"status": analysis_integrity["status"], "analysis_hash": analysis_record["content_hash"] if analysis_record else None, "ledger_record_id": report_record["integrity_record_id"]}
+    report_metadata = save_report_metadata(report_id=report_id, analysis_id=analysis_id, generated_by=getattr(request.state, "actor", {}).get("user_id"), integrity_record_id=report_record["integrity_record_id"], metadata={"analysis_hash": integrity["analysis_hash"], "integrity_status": integrity["status"], "mapping_id": analysis.mapping_id, "mapping_version": analysis.mapping_version, "simulation_id": simulation.simulation_id if simulation else None})
+    integrity["report_version"] = report_metadata["report_version"]
     try:
-        pdf = generate_analysis_pdf(analysis, mapping=mapping, simulation=simulation)
+        pdf = generate_analysis_pdf(
+            analysis, mapping=mapping, simulation=simulation, integrity=integrity,
+            report_id=report_metadata["report_id"], generated_at=report_metadata["generated_at"],
+        )
     except ReportGenerationError as exc:
         raise ApiError(status.HTTP_500_INTERNAL_SERVER_ERROR, ApiErrorCode.REPORT_GENERATION_FAILED, str(exc)) from exc
     except Exception as exc:

@@ -1,5 +1,9 @@
 # Deterministic compliance engine
 
+V2 expands the catalogue contract and rejects invalid property types as UNKNOWN.
+See [Control & Framework Foundation](CONTROL_FOUNDATION_V2_1.md) for metadata,
+enabled-control selection, evidence requirements, and compatibility details.
+
 P0.3 adds the first compliance evaluation layer. It consumes a validated
 `SecurityIR` and the YAML control catalogue and returns a structured
 `ControlEvaluationResult`.

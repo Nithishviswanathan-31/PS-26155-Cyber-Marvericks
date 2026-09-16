@@ -55,6 +55,7 @@ class AstraNetParser:
             raise ValueError("configuration is not recognized as supported synthetic AstraNet demo input")
 
         hostname: str | None = None
+        metadata_provenance: dict[str, SourceLocation] = {}
         unknown_patterns: list[UnknownPattern] = []
 
         for line_number, raw_line in enumerate(configuration_text.splitlines(), start=1):
@@ -62,6 +63,7 @@ class AstraNetParser:
             device_match = cls._DEVICE_RE.match(stripped_line)
             if device_match:
                 hostname = device_match.group("hostname")
+                metadata_provenance["hostname"] = SourceLocation(source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line)
                 continue
 
             if cls._UNKNOWN_PATTERN_RE.match(stripped_line):
@@ -85,7 +87,7 @@ class AstraNetParser:
                 )
 
         return SecurityIR(
-            device=DeviceInfo(vendor=cls.vendor, hostname=hostname),
+            device=DeviceInfo(vendor=cls.vendor, hostname=hostname, metadata_provenance=metadata_provenance),
             normalized_properties={},
             provenance={},
             unknown_patterns=unknown_patterns,

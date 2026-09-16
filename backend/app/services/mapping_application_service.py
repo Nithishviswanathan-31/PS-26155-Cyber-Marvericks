@@ -1,4 +1,4 @@
-from ..domain.mapping import MappingStatus, MappingVersion, validate_semantic_mapping
+from ..domain.mapping import MappingStatus, MappingVersion, validate_semantic_mapping, pattern_signature, normalized_context
 from ..domain.security_ir import MappingProvenance, RecognizedPattern, SecurityIR
 
 
@@ -32,6 +32,21 @@ class MappingApplicationService:
         )
         if pattern is None:
             raise MappingApplicationError("The mapping pattern is not present in the Security IR.")
+        identity = mapping.identity
+        if type(mapping.version) is not int or mapping.version < 1:
+            raise MappingApplicationError("Invalid approved mapping version.")
+        if mapping.vendor != security_ir.device.vendor:
+            raise MappingApplicationError("Approved mapping vendor does not match the target.")
+        if mapping.pattern_signature != pattern_signature(security_ir.device.vendor, pattern.raw_pattern):
+            raise MappingApplicationError("Approved mapping signature does not match the target.")
+        if identity is None:
+            raise MappingApplicationError("Legacy mapping has no verified context; explicit re-approval is required.")
+        if not normalized_context(pattern) or identity.context != normalized_context(pattern):
+            raise MappingApplicationError("Approved mapping context does not match the target.")
+        if pattern_signature(mapping.vendor, identity.source_pattern) != mapping.pattern_signature:
+            raise MappingApplicationError("Approved source pattern does not match its signature.")
+        if len(identity.target_properties) != len(set(identity.target_properties)) or set(identity.target_properties) != set(mapping.approved_mapping):
+            raise MappingApplicationError("Approved mapping target properties do not match its identity.")
         if any(item.pattern_id == target_pattern_id for item in security_ir.recognized_patterns):
             raise MappingApplicationError("The pattern is already recognized in this Security IR.")
 

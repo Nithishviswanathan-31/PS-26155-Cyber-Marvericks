@@ -14,6 +14,18 @@ mapping-aware re-analysis, P0.11 integrity/demo hardening, P0.12 safe
 remediation simulation/re-audit, and P0.13 evidence-first PDF reporting. It is an
 emergency demo MVP, not the complete production-grade system.
 
+## V2 Control & Framework Foundation
+
+The control catalogue now contains the four preserved V1 controls and two
+standalone management transport checks, with validated category, severity,
+vendor applicability, framework metadata, evidence requirements, and existing
+remediation references. The foundation also validates property types and mapping
+identity, rejects malformed catalogues, and counts management diagnostics under
+their parent requirement. See [V2 control foundation](docs/CONTROL_FOUNDATION_V2_1.md)
+for compatibility, deterministic boundaries, and the parser-limited scope.
+
+“AI proposes → deterministic engine validates → evidence proves.”
+
 ## Technology stack
 
 - Backend: Python, FastAPI, Pydantic, PyYAML, ReportLab, SQLite
@@ -150,8 +162,11 @@ P0.10-A additionally includes:
 - Safe UNKNOWN results through the existing deterministic engine
 - Minimal API and frontend display of unresolved patterns
 
-Not yet implemented: authentication and advanced dashboards. This remains an
-emergency demo MVP, not a production deployment.
+V2 implements local authentication and role-based access control, plus a
+persistent auditor console with dashboard, inventory, analysis history,
+findings, batches, knowledge review and integrity views. These capabilities are
+for the offline/demo prototype; enterprise identity, deployment hardening and
+multi-tenant operation remain future work.
 
 ## P0.9 status
 

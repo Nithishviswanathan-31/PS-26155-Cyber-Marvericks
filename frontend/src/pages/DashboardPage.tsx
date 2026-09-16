@@ -1,3 +1,4 @@
+import { authFetch as fetch } from "../api/http";
 import {
   ArrowForward,
   Assessment,
@@ -13,9 +14,11 @@ import {
   Grid,
   Stack,
   Typography,
+  CircularProgress,
 } from "@mui/material";
+import { useEffect, useState } from "react";
 
-import type { AnalysisResponse } from "../api/analyze";
+import { API_BASE_URL, type AnalysisResponse } from "../api/analyze";
 
 interface DashboardPageProps {
   analyses: AnalysisResponse[];
@@ -23,9 +26,12 @@ interface DashboardPageProps {
 }
 
 export default function DashboardPage({ analyses, onAnalyze }: DashboardPageProps) {
-  const lastAnalysis = analyses.at(-1);
-  const passCount = lastAnalysis?.results.filter((item) => item.result === "PASS").length ?? 0;
-  const failCount = lastAnalysis?.results.filter((item) => item.result === "FAIL").length ?? 0;
+  const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const load = () => { setLoading(true); setError(null); fetch(`${API_BASE_URL}/api/dashboard/summary`).then((r) => r.ok ? r.json() : Promise.reject()).then(setSummary).catch(() => setError("Persisted dashboard metrics could not be loaded.")).finally(() => setLoading(false)); };
+  useEffect(load, [analyses.length]);
+  const metric = (key: string) => Number(summary?.[key] ?? 0);
 
   return (
     <Stack spacing={3}>
@@ -48,10 +54,10 @@ export default function DashboardPage({ analyses, onAnalyze }: DashboardPageProp
               <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                 <Box>
                   <Typography color="text.secondary" variant="body2">
-                    Session analyses
+                    Persisted analyses
                   </Typography>
                   <Typography variant="h3" sx={{ mt: 1 }}>
-                    {analyses.length}
+                    {loading ? <CircularProgress size={30} /> : metric("total_analyses")}
                   </Typography>
                 </Box>
                 <Assessment color="primary" />
@@ -65,10 +71,10 @@ export default function DashboardPage({ analyses, onAnalyze }: DashboardPageProp
               <Stack direction="row" justifyContent="space-between" alignItems="flex-start">
                 <Box>
                   <Typography color="text.secondary" variant="body2">
-                    Last result
+                    Independent findings
                   </Typography>
                   <Typography variant="h5" sx={{ mt: 1 }}>
-                    {lastAnalysis ? `${passCount} pass · ${failCount} fail` : "No analysis yet"}
+                    {loading ? "Loading…" : `${metric("pass_findings")} pass · ${metric("fail_findings")} fail · ${metric("unknown_findings")} unknown`}
                   </Typography>
                 </Box>
                 <Security color="secondary" />
@@ -92,6 +98,9 @@ export default function DashboardPage({ analyses, onAnalyze }: DashboardPageProp
           </Card>
         </Grid>
       </Grid>
+
+      {error && <Card><CardContent><Typography color="error.main">{error}</Typography><Button sx={{ mt: 1 }} onClick={load}>Retry</Button></CardContent></Card>}
+      {!loading && !error && <Card variant="outlined"><CardContent><Stack direction="row" justifyContent="space-between"><Typography variant="subtitle1" fontWeight={700}>Persisted audit inventory</Typography><Button size="small" onClick={load}>Refresh</Button></Stack><Grid container spacing={1.5} sx={{ mt: 1 }}>{[["Devices","total_devices"],["Configurations","total_configurations"],["Batches","batch_analyses"],["Active knowledge","active_knowledge_entries"]].map(([label,key])=><Grid key={key} size={{xs:6,sm:3}}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="h6">{metric(key)}</Typography></Grid>)}</Grid><Typography variant="caption" color="text.secondary">Stored root-control findings only; CTRL-005 and CTRL-006 are diagnostic rows and do not inflate independent coverage.</Typography></CardContent></Card>}
 
       <Card variant="outlined">
         <CardContent>
@@ -128,22 +137,22 @@ export default function DashboardPage({ analyses, onAnalyze }: DashboardPageProp
         </CardContent>
       </Card>
 
-      {lastAnalysis && (
+      {Array.isArray(summary?.recent_analyses) && summary.recent_analyses.length > 0 && (
         <Card>
           <CardContent>
             <Typography variant="subtitle1" fontWeight={700}>
               Last analysis
             </Typography>
             <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1 }}>
-              <Chip label={lastAnalysis.filename} size="small" />
-              <Chip label={lastAnalysis.vendor} size="small" variant="outlined" />
-              <Chip label={lastAnalysis.analysis_id} size="small" variant="outlined" />
+              <Chip label={String((summary.recent_analyses[0] as Record<string, unknown>).filename ?? "analysis")} size="small" />
+              <Chip label={String((summary.recent_analyses[0] as Record<string, unknown>).vendor ?? "")} size="small" variant="outlined" />
+              <Chip label={String((summary.recent_analyses[0] as Record<string, unknown>).analysis_id ?? "")} size="small" variant="outlined" />
             </Stack>
           </CardContent>
         </Card>
       )}
 
-      {!lastAnalysis && (
+      {!loading && !error && metric("total_analyses") === 0 && (
         <Typography color="text.secondary">
           No analyses yet. Upload a configuration to begin.
         </Typography>

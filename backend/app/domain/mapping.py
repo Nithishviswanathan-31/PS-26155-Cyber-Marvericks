@@ -3,20 +3,17 @@ from enum import Enum
 from hashlib import sha256
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator
+from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, field_validator
 
-from .security_ir import UnknownPattern
+from .security_ir import UnknownPattern, SourceLocation
+from .properties import PROPERTY_TYPES, valid_property_value
 
 
-SUPPORTED_MAPPING_PROPERTIES = frozenset(
-    {
-        "management.ssh_enabled",
-        "management.telnet_enabled",
-        "logging.enabled",
-        "password_protection.enabled",
-        "time_sync.ntp_enabled",
-    }
-)
+# Expanding parser facts must not silently expand human-mapping approval scope.
+SUPPORTED_MAPPING_PROPERTIES = frozenset({
+    "management.ssh_enabled", "management.telnet_enabled", "logging.enabled",
+    "password_protection.enabled", "time_sync.ntp_enabled",
+})
 
 
 class MappingStatus(str, Enum):
@@ -35,6 +32,8 @@ def validate_semantic_mapping(value: dict[str, StrictBool]) -> dict[str, StrictB
     if unsupported:
         names = ", ".join(sorted(unsupported))
         raise ValueError(f"unsupported normalized mapping property: {names}")
+    if any(not valid_property_value(path, item) for path, item in value.items()):
+        raise ValueError("mapping values must be strict booleans")
     return value
 
 
@@ -49,6 +48,7 @@ class CandidateMappingSuggestion(BaseModel):
     semantic_mapping: dict[str, StrictBool] = Field(min_length=1)
     reasoning: str = Field(min_length=1)
     requires_human_approval: Literal[True] = True
+    proposal_id: str | None = None
 
     @field_validator("pattern_id", "reasoning")
     @classmethod
@@ -73,6 +73,7 @@ class MappingDecisionRequest(BaseModel):
 
     reviewer_id: str = Field(min_length=1)
     semantic_mapping: dict[str, StrictBool] = Field(min_length=1)
+    proposal_id: str | None = None
 
     @field_validator("reviewer_id")
     @classmethod
@@ -97,6 +98,7 @@ class RejectMappingRequest(BaseModel):
 
     reviewer_id: str = Field(min_length=1)
     reason: str | None = None
+    proposal_id: str | None = None
 
     @field_validator("reviewer_id")
     @classmethod
@@ -105,6 +107,21 @@ class RejectMappingRequest(BaseModel):
         if not value:
             raise ValueError("reviewer_id cannot be blank")
         return value
+
+
+class MappingIdentity(BaseModel):
+    """Immutable approval scope; occurrence IDs alone never authorize reuse."""
+
+    model_config = ConfigDict(extra="forbid")
+    context: str = Field(min_length=1)
+    target_properties: list[str] = Field(min_length=1)
+    source_pattern: str = Field(min_length=1)
+    source_location: SourceLocation
+    source_analysis_id: str = Field(min_length=1)
+
+
+def normalized_context(pattern: UnknownPattern) -> str:
+    return " ".join((pattern.context or "").split())
 
 
 class MappingVersion(BaseModel):
@@ -119,12 +136,14 @@ class MappingVersion(BaseModel):
     proposed_mapping: dict[str, StrictBool] = Field(default_factory=dict)
     approved_mapping: dict[str, StrictBool] | None = None
     status: MappingStatus
-    version: int = Field(ge=1)
+    version: StrictInt = Field(ge=1)
     reviewer_id: str | None = None
     action: str = Field(min_length=1)
     created_at: datetime
     updated_at: datetime
     active: bool = False
+    identity: MappingIdentity | None = None
+    proposal_id: str | None = None
 
     @field_validator("proposed_mapping")
     @classmethod

@@ -72,6 +72,31 @@ _REMEDIATIONS: dict[tuple[str, str], RemediationDefinition] = {
     ),
 }
 
+# These transformations change only parser-supported boolean properties on a
+# deep-copied Security IR. Commands are advisory display text, never executed.
+for _vendor, _prefix in (("cisco_iosxe", "CISCO"), ("fortigate_fortios", "FORTIGATE"), ("paloalto_panos", "PALOALTO")):
+    _REMEDIATIONS[(_vendor, "CTRL-002")] = RemediationDefinition(
+        remediation_id=f"REM-CTRL-002-{_prefix}", control_id="CTRL-002", vendor=_vendor,
+        title="Enable audit logging", description="Simulate enabling the parser-supported audit logging state.",
+        commands=["Review and enable the approved audit logging configuration."], target_properties=["logging.enabled"], expected_state={"logging.enabled": True}, risk_level="LOW")
+    _REMEDIATIONS[(_vendor, "CTRL-003")] = RemediationDefinition(
+        remediation_id=f"REM-CTRL-003-{_prefix}", control_id="CTRL-003", vendor=_vendor,
+        title="Enable credential protection", description="Simulate enabling the parser-supported credential-protection state.",
+        commands=["Review and enable the approved credential protection mechanism."], target_properties=["password_protection.enabled"], expected_state={"password_protection.enabled": True}, risk_level="HIGH")
+    _REMEDIATIONS[(_vendor, "CTRL-004")] = RemediationDefinition(
+        remediation_id=f"REM-CTRL-004-{_prefix}", control_id="CTRL-004", vendor=_vendor,
+        title="Enable time synchronization", description="Simulate enabling the parser-supported NTP state.",
+        commands=["Review and enable approved time synchronization."], target_properties=["time_sync.ntp_enabled"], expected_state={"time_sync.ntp_enabled": True}, risk_level="MEDIUM")
+
+
+def list_remediation_capabilities(vendor: str | None = None, control_id: str | None = None) -> list[RemediationDefinition]:
+    return [item for (item_vendor, item_control), item in _REMEDIATIONS.items() if (vendor is None or vendor == item_vendor) and (control_id is None or control_id == item_control)]
+
+
+def validate_remediation_reference(vendor: str, control_id: str, reference: str) -> bool:
+    definition = _REMEDIATIONS.get((vendor, control_id))
+    return definition is not None and definition.remediation_id == reference
+
 
 def get_remediations_for_analysis(analysis: AnalysisResponse) -> list[RemediationDefinition]:
     """Return reviewed recommendations only for explicit FAIL findings."""

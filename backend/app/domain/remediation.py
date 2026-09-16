@@ -24,6 +24,10 @@ class RemediationDefinition(BaseModel):
     target_properties: list[str] = Field(min_length=1)
     expected_state: dict[str, StrictBool] = Field(min_length=1)
     risk_level: RiskLevel
+    supported: Literal[True] = True
+    transformation_type: Literal["SECURITY_IR_PROPERTY_SIMULATION"] = "SECURITY_IR_PROPERTY_SIMULATION"
+    safety_classification: Literal["SIMULATION_ONLY"] = "SIMULATION_ONLY"
+    simulation_capability: Literal["DETERMINISTIC"] = "DETERMINISTIC"
     simulation_only: Literal[True] = True
 
 
@@ -65,3 +69,7 @@ class SimulationResponse(BaseModel):
     results: list[ControlResultSummary] = Field(default_factory=list)
     evidence: list[EvidenceRecord] = Field(default_factory=list)
     message: str
+    original_configuration_fingerprint: str | None = None
+    target_vendor: str | None = None
+    initiated_by: str | None = None
+    compliance_final: Literal[False] = False

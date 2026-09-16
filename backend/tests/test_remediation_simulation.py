@@ -50,9 +50,8 @@ def test_remediation_lookup_is_fail_only_and_simulation_only(client: TestClient)
 
     assert fail_response.status_code == 200
     remediations = fail_response.json()["remediations"]
-    assert len(remediations) == 1
-    assert remediations[0]["control_id"] == "CTRL-001"
-    assert remediations[0]["simulation_only"] is True
+    assert {item["control_id"] for item in remediations} == {"CTRL-001", "CTRL-002", "CTRL-003", "CTRL-004"}
+    assert all(item["simulation_only"] is True and item["simulation_capability"] == "DETERMINISTIC" for item in remediations)
     assert pass_response.status_code == 200
     assert pass_response.json()["remediations"] == []
 
@@ -162,3 +161,17 @@ def test_simulation_errors_are_structured_and_commands_are_not_requestable(clien
                 "simulation_only": False,
             }
         )
+
+
+def test_capabilities_and_explicit_simulation_reanalysis(client: TestClient) -> None:
+    capabilities = client.get("/api/remediation/capabilities?vendor=cisco_iosxe&control_id=CTRL-002")
+    assert capabilities.status_code == 200
+    assert capabilities.json()[0]["remediation_id"] == "REM-CTRL-002-CISCO"
+    analysis_id, _ = upload(client, "cisco", "noncompliant.conf")
+    logging_remediation = next(item for item in client.get(f"/api/remediation/{analysis_id}").json()["remediations"] if item["control_id"] == "CTRL-002")
+    simulation = client.post(f"/api/remediation/{analysis_id}/simulate", json={"remediation_id": logging_remediation["remediation_id"]}).json()
+    assert simulation["compliance_final"] is False
+    explicit = client.post(f"/api/remediation/simulations/{simulation['simulation_id']}/reanalyze")
+    assert explicit.status_code == 200
+    assert explicit.json()["parent_analysis_id"] == analysis_id
+    assert next(item for item in explicit.json()["results"] if item["control_id"] == "CTRL-002")["result"] == "PASS"

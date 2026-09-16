@@ -1,3 +1,4 @@
+import { authFetch as fetch } from "./http";
 import { API_BASE_URL } from "./analyze";
 
 export type MappingStatus = "SUGGESTED" | "APPROVED" | "REJECTED" | "INACTIVE";
@@ -10,6 +11,7 @@ export interface CandidateMappingSuggestion {
   semantic_mapping: SemanticMapping;
   reasoning: string;
   requires_human_approval: true;
+  proposal_id?: string | null;
 }
 
 export interface MappingVersion {
@@ -26,6 +28,7 @@ export interface MappingVersion {
   created_at: string;
   updated_at: string;
   active: boolean;
+  proposal_id?: string | null;
 }
 
 export interface MappingDecisionResponse {
@@ -34,6 +37,23 @@ export interface MappingDecisionResponse {
   mapping: MappingVersion;
   compliance_impact: "UNCHANGED";
   message: string;
+}
+
+export interface KnowledgeMatch {
+  knowledge_id: string;
+  vendor: string;
+  normalized_context: string | null;
+  approved_mapping: SemanticMapping | null;
+  status: string;
+  version: number;
+  reviewer_id: string | null;
+  originating_proposal_id: string | null;
+}
+
+export interface KnowledgeClassification {
+  exact_matches: KnowledgeMatch[];
+  related_knowledge: KnowledgeMatch[];
+  conflicts: KnowledgeMatch[];
 }
 
 export class MappingApiError extends Error {
@@ -88,14 +108,29 @@ export async function suggestMapping(patternId: string): Promise<CandidateMappin
   );
 }
 
+export async function getPatternKnowledge(patternId: string): Promise<KnowledgeClassification> {
+  return requestMapping<KnowledgeClassification>(
+    `/api/mappings/unknown/${encodeURIComponent(patternId)}/knowledge`,
+    { method: "GET" },
+  );
+}
+
+export async function deactivateKnowledge(knowledgeId: string, reviewerId: string): Promise<unknown> {
+  return requestMapping<unknown>(
+    `/api/knowledge/${encodeURIComponent(knowledgeId)}/deactivate`,
+    jsonRequest({ reviewer_id: reviewerId }),
+  );
+}
+
 export async function approveMapping(
   patternId: string,
   semanticMapping: SemanticMapping,
   reviewerId: string,
+  proposalId?: string | null,
 ): Promise<MappingDecisionResponse> {
   return requestMapping<MappingDecisionResponse>(
     `/api/mappings/${encodeURIComponent(patternId)}/approve`,
-    jsonRequest({ reviewer_id: reviewerId, semantic_mapping: semanticMapping }),
+    jsonRequest({ reviewer_id: reviewerId, semantic_mapping: semanticMapping, proposal_id: proposalId }),
   );
 }
 
@@ -103,10 +138,11 @@ export async function correctAndApproveMapping(
   patternId: string,
   semanticMapping: SemanticMapping,
   reviewerId: string,
+  proposalId?: string | null,
 ): Promise<MappingDecisionResponse> {
   return requestMapping<MappingDecisionResponse>(
     `/api/mappings/${encodeURIComponent(patternId)}/correct`,
-    jsonRequest({ reviewer_id: reviewerId, semantic_mapping: semanticMapping }),
+    jsonRequest({ reviewer_id: reviewerId, semantic_mapping: semanticMapping, proposal_id: proposalId }),
   );
 }
 
@@ -114,9 +150,10 @@ export async function rejectMapping(
   patternId: string,
   reviewerId: string,
   reason?: string,
+  proposalId?: string | null,
 ): Promise<MappingDecisionResponse> {
   return requestMapping<MappingDecisionResponse>(
     `/api/mappings/${encodeURIComponent(patternId)}/reject`,
-    jsonRequest({ reviewer_id: reviewerId, reason }),
+    jsonRequest({ reviewer_id: reviewerId, reason, proposal_id: proposalId }),
   );
 }

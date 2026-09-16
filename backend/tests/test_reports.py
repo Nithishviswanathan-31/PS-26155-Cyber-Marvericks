@@ -66,6 +66,8 @@ def test_pdf_generation_for_supported_vendors_contains_stored_results_and_eviden
     assert "Executive Summary" in text
     assert "Control Results" in text
     assert "Evidence Details" in text
+    assert "Integrity Status" in text
+    assert "Analysis Integrity Hash" in text
     assert vendor in text
     assert analysis["analysis_id"] in text
     assert "CTRL-001" in text
@@ -159,3 +161,15 @@ def test_original_and_reanalysis_reports_are_distinct(client: TestClient) -> Non
     assert "Re-analysis" in pdf_text(original_pdf)
     assert "NO" in pdf_text(original_pdf)
     assert "Adaptive Mapping" in pdf_text(child_pdf)
+
+
+def test_report_identity_matches_pdf_history_and_ledger(client: TestClient) -> None:
+    analysis = upload(client, "cisco", "compliant.conf")
+    pdf = client.get(f"/api/reports/{analysis['analysis_id']}/pdf")
+    assert pdf.status_code == 200
+    metadata = client.get(f"/api/reports/{analysis['analysis_id']}").json()["items"][0]
+    report_id = metadata["report_id"]
+    assert report_id in pdf_text(pdf.content)
+    record = client.get(f"/api/integrity/REPORT/{report_id}").json()
+    assert record["artifact_id"] == report_id
+    assert record["integrity_record_id"] == metadata["integrity_record_id"]

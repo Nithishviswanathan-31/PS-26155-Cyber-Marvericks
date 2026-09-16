@@ -2,6 +2,7 @@ from collections.abc import Iterable
 from typing import Any
 
 from .enums import ComplianceResult
+from .properties import valid_property_value
 from .schemas import (
     ControlDefinition,
     ControlEvaluationResult,
@@ -98,6 +99,16 @@ class DeterministicControlEngine:
                         explanation="The normalized property is explicitly ambiguous or unknown.",
                     )
                 )
+                continue
+
+            if not valid_property_value(condition.path, trace.value) or not valid_property_value(condition.path, condition.expected):
+                condition_results.append(ComplianceResult.UNKNOWN)
+                evidence.append(ControlEvidence.from_trace(
+                    property_name=condition.path, expected=condition.expected,
+                    actual=trace.value, result=ComplianceResult.UNKNOWN,
+                    provenance=trace.provenance,
+                    explanation="The property is unregistered or its actual/expected value has an invalid type; no coercion is permitted.",
+                ))
                 continue
 
             if condition.operator.strip().lower() != "equals":

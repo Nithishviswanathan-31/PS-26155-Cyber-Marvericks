@@ -80,11 +80,17 @@ class FortiGateParser:
         current_config: str | None = None
         version: str | None = None
         hostname: str | None = None
+        platform: str | None = None
+        metadata_provenance: dict[str, SourceLocation] = {}
         observations: dict[str, list[_Observation]] = {}
         unknown_patterns: list[UnknownPattern] = []
         access_syntax_is_ambiguous = False
 
         def add_observation(property_name: str, value: bool, line_number: int, raw_line: str) -> None:
+            if property_name == "password_protection.enabled":
+                observations.setdefault("credentials.password_policy_enabled", []).append(
+                    _Observation(value=value, line_number=line_number, raw_line=raw_line)
+                )
             observations.setdefault(property_name, []).append(
                 _Observation(value=value, line_number=line_number, raw_line=raw_line)
             )
@@ -110,6 +116,11 @@ class FortiGateParser:
             version_match = cls._VERSION_RE.match(stripped_line)
             if version_match:
                 version = version_match.group("version")
+                metadata_provenance["software_version"] = SourceLocation(source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line)
+                product = re.match(r"^#config-version=([A-Za-z0-9_-]+)\s+v", stripped_line, re.IGNORECASE)
+                if product:
+                    platform = product.group(1)
+                    metadata_provenance["platform"] = metadata_provenance["software_version"]
                 continue
 
             if stripped_line.startswith("#") or stripped_line.startswith("!"):
@@ -140,6 +151,7 @@ class FortiGateParser:
                     hostname_values = []
                 if len(hostname_values) == 1 and hostname_values[0].strip():
                     hostname = hostname_values[0]
+                    metadata_provenance["hostname"] = SourceLocation(source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line)
                 else:
                     add_unknown(raw_line, line_number, "The FortiOS hostname value is malformed or ambiguous.")
                 continue
@@ -207,6 +219,8 @@ class FortiGateParser:
                 vendor=cls.vendor,
                 version=version,
                 hostname=hostname,
+                platform=platform,
+                metadata_provenance=metadata_provenance,
             ),
             normalized_properties=normalized_properties,
             provenance=provenance,

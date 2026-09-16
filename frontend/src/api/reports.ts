@@ -1,3 +1,4 @@
+import { authFetch as fetch } from "./http";
 import { API_BASE_URL } from "./analyze";
 
 export class ReportApiError extends Error {

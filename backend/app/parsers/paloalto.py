@@ -64,6 +64,7 @@ class PaloAltoParser:
 
         version: str | None = None
         hostname: str | None = None
+        metadata_provenance: dict[str, SourceLocation] = {}
         unknown_patterns: list[UnknownPattern] = []
         observations: dict[str, list[_Observation]] = {}
         ambiguous_properties: set[str] = set()
@@ -71,6 +72,10 @@ class PaloAltoParser:
         assigned_profiles: list[tuple[str, int, str]] = []
 
         def add_observation(property_name: str, value: bool, line_number: int, raw_line: str) -> None:
+            if property_name == "password_protection.enabled":
+                observations.setdefault("credentials.username_exclusion_enabled", []).append(
+                    _Observation(value=value, line_number=line_number, raw_line=raw_line)
+                )
             observations.setdefault(property_name, []).append(
                 _Observation(value=value, line_number=line_number, raw_line=raw_line)
             )
@@ -114,6 +119,7 @@ class PaloAltoParser:
             if lowered[:4] == ["set", "deviceconfig", "system", "hostname"]:
                 if len(tokens) == 5 and tokens[4].strip():
                     hostname = tokens[4]
+                    metadata_provenance["hostname"] = SourceLocation(source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line)
                 else:
                     add_unknown(raw_line, line_number, "The PAN-OS hostname statement is malformed or ambiguous.")
                 continue
@@ -213,6 +219,7 @@ class PaloAltoParser:
                 vendor=cls.vendor,
                 version=version,
                 hostname=hostname,
+                metadata_provenance=metadata_provenance,
             ),
             normalized_properties=normalized_properties,
             provenance=provenance,

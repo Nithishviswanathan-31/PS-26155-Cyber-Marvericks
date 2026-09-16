@@ -132,6 +132,8 @@ def test_response_contains_control_results(client: TestClient) -> None:
         "CTRL-002",
         "CTRL-003",
         "CTRL-004",
+        "CTRL-005",
+        "CTRL-006",
     ]
 
 
@@ -143,6 +145,8 @@ def test_response_contains_evidence(client: TestClient) -> None:
         "CTRL-002",
         "CTRL-003",
         "CTRL-004",
+        "CTRL-005",
+        "CTRL-006",
     }
 
 

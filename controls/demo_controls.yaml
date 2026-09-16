@@ -1,6 +1,17 @@
 controls:
   - control_id: CTRL-001
     name: Secure management transport
+    category: MANAGEMENT_ACCESS
+    severity: HIGH
+    enabled: true
+    applicable_vendors: [cisco_iosxe, fortigate_fortios, paloalto_panos]
+    framework_mappings: []
+    evidence_requirements:
+      include_paths: [management.ssh_enabled, management.telnet_enabled]
+    remediation_reference:
+      cisco_iosxe: REM-CTRL-001-CISCO
+      fortigate_fortios: REM-CTRL-001-FORTIGATE
+      paloalto_panos: REM-CTRL-001-PALOALTO
     description: Management access should use SSH and should not expose Telnet.
     expected_value: SSH enabled and Telnet disabled
     evaluation:
@@ -24,6 +35,17 @@ controls:
 
   - control_id: CTRL-002
     name: Audit logging enabled
+    category: LOGGING_MONITORING
+    severity: MEDIUM
+    enabled: true
+    applicable_vendors: [cisco_iosxe, fortigate_fortios, paloalto_panos]
+    framework_mappings: []
+    evidence_requirements:
+      include_paths: [logging.enabled]
+    remediation_reference:
+      cisco_iosxe: REM-CTRL-002-CISCO
+      fortigate_fortios: REM-CTRL-002-FORTIGATE
+      paloalto_panos: REM-CTRL-002-PALOALTO
     description: Configuration logging should be enabled for audit traceability.
     expected_value: Logging enabled
     evaluation:
@@ -43,6 +65,17 @@ controls:
 
   - control_id: CTRL-003
     name: Secret protection enabled
+    category: CREDENTIAL_PROTECTION
+    severity: HIGH
+    enabled: true
+    applicable_vendors: [cisco_iosxe, fortigate_fortios, paloalto_panos]
+    framework_mappings: []
+    evidence_requirements:
+      include_paths: [password_protection.enabled]
+    remediation_reference:
+      cisco_iosxe: REM-CTRL-003-CISCO
+      fortigate_fortios: REM-CTRL-003-FORTIGATE
+      paloalto_panos: REM-CTRL-003-PALOALTO
     description: Stored credentials or secrets should use the platform protection mechanism.
     expected_value: Secret protection enabled
     evaluation:
@@ -62,6 +95,17 @@ controls:
 
   - control_id: CTRL-004
     name: Time synchronization configured
+    category: TIME_SYNCHRONIZATION
+    severity: MEDIUM
+    enabled: true
+    applicable_vendors: [cisco_iosxe, fortigate_fortios, paloalto_panos]
+    framework_mappings: []
+    evidence_requirements:
+      include_paths: [time_sync.ntp_enabled]
+    remediation_reference:
+      cisco_iosxe: REM-CTRL-004-CISCO
+      fortigate_fortios: REM-CTRL-004-FORTIGATE
+      paloalto_panos: REM-CTRL-004-PALOALTO
     description: Network time synchronization should be enabled for consistent event timelines.
     expected_value: NTP enabled
     evaluation:
@@ -78,3 +122,47 @@ controls:
       fortigate_fortios: Review system time settings and enable approved NTP synchronization.
       paloalto_panos: Review device time settings and enable approved NTP synchronization.
       astranet: Review the synthetic clock-sync setting.
+
+  - control_id: CTRL-005
+    diagnostic_of: CTRL-001
+    name: SSH management enabled
+    description: Independently verify ssh management enabled using the parsed management property.
+    category: MANAGEMENT_ACCESS
+    severity: HIGH
+    enabled: true
+    applicable_vendors: [cisco_iosxe, fortigate_fortios, paloalto_panos]
+    framework_mappings: []
+    expected_value: SSH management enabled
+    evaluation:
+      type: equals
+      conditions:
+        - path: management.ssh_enabled
+          operator: equals
+          expected: true
+    evidence_requirements:
+      include_paths: [management.ssh_enabled]
+    evidence_rule:
+      include_paths: [management.ssh_enabled]
+    remediation_reference: null
+
+  - control_id: CTRL-006
+    diagnostic_of: CTRL-001
+    name: Telnet management disabled
+    description: Independently verify telnet management disabled using the parsed management property.
+    category: MANAGEMENT_ACCESS
+    severity: HIGH
+    enabled: true
+    applicable_vendors: [cisco_iosxe, fortigate_fortios, paloalto_panos]
+    framework_mappings: []
+    expected_value: Telnet management disabled
+    evaluation:
+      type: equals
+      conditions:
+        - path: management.telnet_enabled
+          operator: equals
+          expected: false
+    evidence_requirements:
+      include_paths: [management.telnet_enabled]
+    evidence_rule:
+      include_paths: [management.telnet_enabled]
+    remediation_reference: null
