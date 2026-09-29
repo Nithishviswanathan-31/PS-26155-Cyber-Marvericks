@@ -98,6 +98,7 @@ type WorkflowState =
 
 interface AnalyzeConfigurationPageProps {
   onAnalysisCompleted: (analysis: AnalysisResponse) => void;
+  initialTab?: "single" | "bulk";
 }
 
 const MAX_FILE_BYTES = 1 * 1024 * 1024;
@@ -170,6 +171,7 @@ const validateFile = (file: File): string | null => {
 
 export default function AnalyzeConfigurationPage({
   onAnalysisCompleted,
+  initialTab,
 }: AnalyzeConfigurationPageProps) {
   const { user } = useAuth();
   const canAudit = user.role !== "REVIEWER";
@@ -182,7 +184,7 @@ export default function AnalyzeConfigurationPage({
     useState<WorkflowState>("IDLE");
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [ingestionTab, setIngestionTab] = useState<"single" | "bulk">("single");
+  const [ingestionTab, setIngestionTab] = useState<"single" | "bulk">(initialTab ?? "single");
   const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
   const [inspectedBatchItemId, setInspectedBatchItemId] = useState<string | null>(null);
   const [batchDragOver, setBatchDragOver] = useState(false);

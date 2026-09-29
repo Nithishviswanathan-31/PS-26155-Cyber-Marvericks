@@ -226,7 +226,7 @@ node --test tests/auth-http.test.mjs
 
 The final V2 validation for the frozen implementation recorded:
 
-- **Backend:** 420 passed, 0 failed, 0 skipped.
+- **Backend:** 517 passed, 0 failed, 0 skipped.
 - **Frontend:** TypeScript validation passed, Vite production build passed, and frontend authentication tests passed.
 - **Coverage:** authentication/RBAC, parsers, Security IR, deterministic controls, batch processing, interpretations, adaptive knowledge, mappings/re-analysis, remediation, integrity, PDF reporting, and auditor console workflows.
 

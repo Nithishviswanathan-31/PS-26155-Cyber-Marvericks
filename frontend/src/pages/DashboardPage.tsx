@@ -3,6 +3,7 @@ import {
   ArrowForward,
   Assessment,
   CloudUpload,
+  Layers,
   Security,
 } from "@mui/icons-material";
 import {
@@ -22,7 +23,7 @@ import { API_BASE_URL, type AnalysisResponse } from "../api/analyze";
 
 interface DashboardPageProps {
   analyses: AnalysisResponse[];
-  onAnalyze: () => void;
+  onAnalyze: (tab: "single" | "bulk") => void;
 }
 
 export default function DashboardPage({ analyses, onAnalyze }: DashboardPageProps) {
@@ -108,30 +109,38 @@ export default function DashboardPage({ analyses, onAnalyze }: DashboardPageProp
             Demonstration paths
           </Typography>
           <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.25 }}>
-            <Chip label="Compliance Findings" size="small" variant="outlined" />
-            <Chip label="Adaptive Learning" size="small" variant="outlined" />
-            <Chip label="Remediation Simulation" size="small" variant="outlined" />
-            <Chip label="Evidence-first PDF" size="small" variant="outlined" />
+            <Chip label="Cisco → Non-Compliant" size="small" variant="outlined" />
+            <Chip label="FortiGate → Compliant" size="small" variant="outlined" />
+            <Chip label="Palo Alto → Mixed" size="small" variant="outlined" />
+            <Chip label="AstraNet → Unknown → Learning" size="small" variant="outlined" />
           </Stack>
         </CardContent>
       </Card>
 
       <Card sx={{ border: "1px solid rgba(110,168,254,0.25)" }}>
         <CardContent sx={{ p: { xs: 2.5, md: 3.5 } }}>
-          <Stack direction={{ xs: "column", md: "row" }} spacing={3} alignItems={{ md: "center" }}>
-            <Box sx={{ flexGrow: 1 }}>
-              <Stack direction="row" spacing={1.5} alignItems="center">
-                <CloudUpload color="primary" />
-                <Typography variant="h6" fontWeight={700}>
-                  Start a configuration analysis
-                </Typography>
-              </Stack>
-              <Typography color="text.secondary" sx={{ mt: 1 }}>
-                Upload a prepared demo configuration to generate Security IR, deterministic controls, and traceable evidence.
-              </Typography>
-            </Box>
-            <Button variant="contained" endIcon={<ArrowForward />} onClick={onAnalyze}>
-              Analyze Configuration
+          <Typography variant="h6" fontWeight={700} gutterBottom>
+            Start an audit
+          </Typography>
+          <Typography color="text.secondary" sx={{ mb: 2 }}>
+            Upload a prepared demo configuration to generate a deterministic compliance report, traceable evidence, and an exportable PDF.
+          </Typography>
+          <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+            <Button
+              variant="contained"
+              startIcon={<CloudUpload />}
+              endIcon={<ArrowForward />}
+              onClick={() => onAnalyze("single")}
+            >
+              Single Device Audit
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<Layers />}
+              endIcon={<ArrowForward />}
+              onClick={() => onAnalyze("bulk")}
+            >
+              Bulk Fleet Audit
             </Button>
           </Stack>
         </CardContent>

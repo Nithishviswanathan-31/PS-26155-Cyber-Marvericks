@@ -16,7 +16,7 @@ import {
   Button,
   Alert,
 } from "@mui/material";
-import { Assessment, Dashboard, Devices, Storage, FactCheck, Warning, Inventory, Psychology, VerifiedUser } from "@mui/icons-material";
+import { Assessment, Dashboard, Devices, Storage, FactCheck, Warning, Inventory, Psychology, VerifiedUser, Layers } from "@mui/icons-material";
 
 import { useState } from "react";
 
@@ -61,7 +61,7 @@ export default function App() {
           <Stack direction="row" spacing={1.25} alignItems="center">
             <Chip label={user.offline ? "Offline demo" : `${user.display_name} · ${user.role}`} size="small" />
             <Button onClick={() => void logout().catch(() => setLogoutError("Could not revoke the session. Retry logout."))}>Logout</Button>
-            <Chip label="Emergency Demo MVP · P0.14" color="secondary" variant="outlined" />
+            <Chip label="SIH Final Submission · PS 26155" color="secondary" variant="outlined" />
             <Avatar sx={{ width: 32, height: 32, bgcolor: "primary.main", color: "#071426" }}>C</Avatar>
           </Stack>
         </Toolbar>
@@ -95,23 +95,24 @@ export default function App() {
         <List sx={{ px: 1.25, pt: 2 }}>
           {[
             { label: "Dashboard", view: "dashboard" as const, icon: <Dashboard fontSize="small" /> },
-            { label: user.role === "REVIEWER" ? "Analysis review" : "Analyze Configuration", view: "analyze" as const, icon: <Assessment fontSize="small" /> },
-            { label: "Devices", view: "devices", icon: <Devices fontSize="small" /> },
-            { label: "Configurations", view: "configurations", icon: <Storage fontSize="small" /> },
+            { label: "Single Device Audit", view: "single-audit" as const, icon: <Assessment fontSize="small" /> },
+            { label: "Bulk Fleet Audit", view: "bulk-audit" as const, icon: <Layers fontSize="small" /> },
             { label: "Analyses", view: "analyses", icon: <FactCheck fontSize="small" /> },
-            { label: "Findings", view: "findings", icon: <Warning fontSize="small" /> },
-            { label: "Batches", view: "batches", icon: <Inventory fontSize="small" /> },
             { label: "Knowledge Review", view: "knowledge", icon: <Psychology fontSize="small" /> },
             { label: "Integrity", view: "integrity", icon: <VerifiedUser fontSize="small" /> },
+            { label: "Devices", view: "devices", icon: <Devices fontSize="small" /> },
+            { label: "Configurations", view: "configurations", icon: <Storage fontSize="small" /> },
+            { label: "Findings", view: "findings", icon: <Warning fontSize="small" /> },
+            { label: "Batches", view: "batches", icon: <Inventory fontSize="small" /> },
             { label: "User management", view: "users", icon: <Devices fontSize="small" /> },
           ].filter(item => (item.view !== "users" || (user.role === "ADMIN" && !user.offline)) && (item.view !== "knowledge" || user.role !== "AUDITOR")).map((item) => (
             <ListItemButton
               key={item.label}
-              selected={activeView === item.view}
+              selected={activeView === item.view || (item.view === "single-audit" && activeView === "analyze")}
               onClick={() => setActiveView(item.view)}
               sx={{ borderRadius: 2, mb: 0.5 }}
             >
-              <Box sx={{ display: "flex", mr: 1.25, color: activeView === item.view ? "primary.main" : "text.secondary" }}>
+              <Box sx={{ display: "flex", mr: 1.25, color: (activeView === item.view || (item.view === "single-audit" && activeView === "analyze")) ? "primary.main" : "text.secondary" }}>
                 {item.icon}
               </Box>
               <ListItemText primary={item.label} />
@@ -125,10 +126,30 @@ export default function App() {
           <Stack spacing={3}>
             {logoutError && <Alert severity="error" onClose={() => setLogoutError(null)}>{logoutError}</Alert>}
             {activeView === "dashboard" ? (
-              <DashboardPage analyses={analyses} onAnalyze={() => setActiveView("analyze")} />
-            ) : activeView === "analyze" ? (
-              <AnalyzeConfigurationPage onAnalysisCompleted={handleAnalysisCompleted} />
-            ) : activeView === "users" && user.role === "ADMIN" && !user.offline ? <UsersPage /> : activeView === "integrity" ? <IntegrityPage /> : <ConsolePage title={activeView === "knowledge" ? "Knowledge Review Queue" : activeView[0].toUpperCase()+activeView.slice(1)} path={activeView === "knowledge" ? "/api/knowledge/review-queue" : `/api/${activeView}`} />}
+              <DashboardPage
+                analyses={analyses}
+                onAnalyze={(tab) => setActiveView(tab === "bulk" ? "bulk-audit" : "single-audit")}
+              />
+            ) : activeView === "single-audit" || activeView === "analyze" ? (
+              <AnalyzeConfigurationPage
+                initialTab="single"
+                onAnalysisCompleted={handleAnalysisCompleted}
+              />
+            ) : activeView === "bulk-audit" ? (
+              <AnalyzeConfigurationPage
+                initialTab="bulk"
+                onAnalysisCompleted={handleAnalysisCompleted}
+              />
+            ) : activeView === "users" && user.role === "ADMIN" && !user.offline ? (
+              <UsersPage />
+            ) : activeView === "integrity" ? (
+              <IntegrityPage />
+            ) : (
+              <ConsolePage
+                title={activeView === "knowledge" ? "Knowledge Review Queue" : activeView[0].toUpperCase() + activeView.slice(1)}
+                path={activeView === "knowledge" ? "/api/knowledge/review-queue" : `/api/${activeView}`}
+              />
+            )}
           </Stack>
         </Container>
       </Box>
