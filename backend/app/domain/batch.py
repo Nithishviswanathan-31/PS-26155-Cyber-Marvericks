@@ -21,6 +21,15 @@ class BatchItem(BaseModel):
     error_message: str | None = None
     duplicate_of_configuration_id: str | None = None
     compliance_status: Literal["PASS", "FAIL", "UNKNOWN", "MIXED"] | None = None
+    vendor: str | None = None
+    platform: str | None = None
+    hostname: str | None = None
+    device_model: str | None = None
+    serial_number: str | None = None
+    pass_count: int = Field(default=0, ge=0)
+    fail_count: int = Field(default=0, ge=0)
+    unknown_count: int = Field(default=0, ge=0)
+    not_applicable_count: int = Field(default=0, ge=0)
     created_at: datetime
     updated_at: datetime
 
@@ -36,6 +45,12 @@ class BatchSummary(BaseModel):
     pass_analyses: int = Field(ge=0)
     fail_analyses: int = Field(ge=0)
     unknown_analyses: int = Field(ge=0)
+    vendors_detected: list[str] = Field(default_factory=list)
+    devices_analyzed: list[str] = Field(default_factory=list)
+    pass_count: int = Field(default=0, ge=0)
+    fail_count: int = Field(default=0, ge=0)
+    unknown_count: int = Field(default=0, ge=0)
+    not_applicable_count: int = Field(default=0, ge=0)
 
 
 class BatchAnalysis(BaseModel):

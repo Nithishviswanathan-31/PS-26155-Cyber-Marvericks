@@ -11,8 +11,13 @@ export interface RemediationDefinition {
   remediation_id: string;
   control_id: string;
   vendor: string;
+  platform?: string | null;
   title: string;
   description: string;
+  finding?: string | null;
+  explanation?: string | null;
+  applicability_notes?: string | null;
+  remediation_steps?: string[];
   commands: string[];
   target_properties: string[];
   expected_state: Record<string, boolean>;

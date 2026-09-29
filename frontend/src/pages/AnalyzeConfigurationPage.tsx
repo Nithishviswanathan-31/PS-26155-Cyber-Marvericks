@@ -19,7 +19,10 @@ import {
   Paper,
   Stack,
   Switch,
+  Tab,
+  Tabs,
   TextField,
+  Tooltip,
   Step,
   StepLabel,
   Stepper,
@@ -31,7 +34,15 @@ import {
   Typography,
 } from "@mui/material";
 
-import { Close, Description, Download, UploadFile } from "@mui/icons-material";
+import {
+  Close,
+  Description,
+  Download,
+  Layers,
+  PictureAsPdf,
+  UploadFile,
+  Visibility,
+} from "@mui/icons-material";
 
 import {
   analyzeConfiguration,
@@ -171,6 +182,10 @@ export default function AnalyzeConfigurationPage({
     useState<WorkflowState>("IDLE");
 
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [ingestionTab, setIngestionTab] = useState<"single" | "bulk">("single");
+  const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
+  const [inspectedBatchItemId, setInspectedBatchItemId] = useState<string | null>(null);
+  const [batchDragOver, setBatchDragOver] = useState(false);
   const [batchFiles, setBatchFiles] = useState<File[]>([]);
   const [batch, setBatch] = useState<BatchAnalysis | null>(null);
   const [batchItems, setBatchItems] = useState<BatchItem[]>([]);
@@ -354,10 +369,53 @@ export default function AnalyzeConfigurationPage({
     }
   };
 
-  const openBatchAnalysis = async (analysisId: string) => {
+  const addBatchFiles = (newFiles: File[]) => {
+    const validFiles: File[] = [];
+    const errors: string[] = [];
+
+    for (const f of newFiles) {
+      const valErr = validateFile(f);
+      if (valErr) {
+        errors.push(`${f.name}: ${valErr}`);
+      } else {
+        validFiles.push(f);
+      }
+    }
+
+    if (errors.length > 0) {
+      setErrorMessage(errors.join(" | "));
+    } else {
+      setErrorMessage(null);
+    }
+
+    setBatchFiles((prev) => {
+      const existingKeys = new Set(prev.map((f) => `${f.name}:${f.size}`));
+      const filtered = validFiles.filter((f) => !existingKeys.has(`${f.name}:${f.size}`));
+      const combined = [...prev, ...filtered];
+      if (combined.length > 25) {
+        setErrorMessage("A batch may contain at most 25 files. Excess files were omitted.");
+        return combined.slice(0, 25);
+      }
+      return combined;
+    });
+  };
+
+  const removeBatchFile = (index: number) => {
+    setBatchFiles((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const clearBatchFiles = () => {
+    setBatchFiles([]);
+    if (batchInputRef.current) {
+      batchInputRef.current.value = "";
+    }
+  };
+
+  const openBatchAnalysis = async (analysisId: string, batchItemId?: string) => {
     try {
       const result = await getAnalysis(analysisId);
       setAnalysis(result);
+      setInspectedBatchItemId(batchItemId ?? null);
       setCandidate(null);
       setKnowledge(null);
       setMappingDecision(null);
@@ -369,6 +427,20 @@ export default function AnalyzeConfigurationPage({
       setReanalysis(null);
       setSelectedResult(null);
       onAnalysisCompleted(result);
+
+      setRemediationBusy(true);
+      try {
+        const remediationResponse = await getRemediations(result.analysis_id);
+        setRemediations(remediationResponse.remediations);
+      } catch (err: unknown) {
+        setRemediationError(
+          err instanceof RemediationApiError
+            ? err.message
+            : "Remediation recommendations could not be loaded."
+        );
+      } finally {
+        setRemediationBusy(false);
+      }
     } catch (error: unknown) {
       setErrorMessage(error instanceof AnalysisApiError ? error.message : "The analysis could not be loaded.");
     }
@@ -569,11 +641,13 @@ export default function AnalyzeConfigurationPage({
 
   const handleGenerateReport = async (
     analysisId: string,
-    suggestedName: string
+    suggestedName: string,
+    batchItemId?: string
   ) => {
     if (reportBusy) return;
 
     setReportBusy(true);
+    if (batchItemId) setDownloadingReportId(batchItemId);
     setReportError(null);
 
     try {
@@ -595,6 +669,7 @@ export default function AnalyzeConfigurationPage({
       );
     } finally {
       setReportBusy(false);
+      setDownloadingReportId(null);
     }
   };
 
@@ -639,188 +714,703 @@ export default function AnalyzeConfigurationPage({
         Compliance results are deterministic.
       </Alert>
 
-      <Card><CardContent><Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-        <TextField label="Stored analysis ID" value={storedAnalysisId} onChange={event => setStoredAnalysisId(event.target.value)} fullWidth />
-        <Button disabled={!storedAnalysisId.trim()} onClick={() => void openBatchAnalysis(storedAnalysisId.trim())}>Open analysis</Button>
-      </Stack>{errorMessage && <Alert severity="error">{errorMessage}</Alert>}</CardContent></Card>
-      {canAudit && <><Card>
-        <CardContent>
-          <Stack spacing={1.5}>
-            <Typography variant="h6">Batch analysis</Typography>
-            <Typography variant="body2" color="text.secondary">
-              Select up to 25 bounded configuration files. Each file is processed independently and keeps its own result, evidence, or error.
-            </Typography>
-            <input ref={batchInputRef} hidden multiple type="file" accept=".conf,.cfg,.txt" onChange={(event) => setBatchFiles(Array.from(event.target.files ?? []))} />
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} alignItems={{ sm: "center" }}>
-              <Button variant="outlined" onClick={() => batchInputRef.current?.click()}>Select files</Button>
-              <Typography variant="body2" color="text.secondary">{batchFiles.length ? `${batchFiles.length} file(s) selected` : "No files selected"}</Typography>
-              <Button variant="contained" disabled={!batchFiles.length || batchBusy} onClick={handleBatchAnalyze}>{batchBusy ? "Processing…" : "Analyze batch"}</Button>
-            </Stack>
-            {batch && <Alert severity={batch.status === "COMPLETED" ? "success" : "warning"}>
-              Batch {batch.batch_id}: {batch.status} · {batch.successful_items} successful · {batch.failed_items} failed · {batch.duplicate_items} duplicate
-            </Alert>}
-            {batchItems.length > 0 && <Table size="small"><TableHead><TableRow><TableCell>File</TableCell><TableCell>Status</TableCell><TableCell>Compliance</TableCell><TableCell>Error</TableCell><TableCell /></TableRow></TableHead><TableBody>{batchItems.map((item) => <TableRow key={item.batch_item_id}><TableCell>{item.source_filename}</TableCell><TableCell>{item.processing_status}</TableCell><TableCell>{item.compliance_status ?? "—"}</TableCell><TableCell>{item.error_message ?? "—"}</TableCell><TableCell>{item.analysis_id && <Button size="small" onClick={() => openBatchAnalysis(item.analysis_id as string)}>Open</Button>}</TableCell></TableRow>)}</TableBody></Table>}
-          </Stack>
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardContent sx={{ p: { xs: 2, md: 3 } }}>
-          <Stack spacing={2.5}>
-            <Box
-              onDragOver={(event) => {
-                event.preventDefault();
-                setIsDragging(true);
+      {canAudit && (
+        <Card variant="outlined" sx={{ overflow: "hidden" }}>
+          <Box sx={{ borderBottom: 1, borderColor: "divider", bgcolor: "rgba(255,255,255,0.02)" }}>
+            <Tabs
+              value={ingestionTab}
+              onChange={(_, value) => {
+                setIngestionTab(value);
+                setErrorMessage(null);
               }}
-              onDragLeave={() => setIsDragging(false)}
-              onDrop={(event) => {
-                event.preventDefault();
-                setIsDragging(false);
-                selectFile(event.dataTransfer.files[0]);
-              }}
-              sx={{
-                border: "1px dashed",
-                borderColor: isDragging
-                  ? "secondary.main"
-                  : "rgba(110,168,254,0.45)",
-                bgcolor: isDragging
-                  ? "rgba(37,208,177,0.08)"
-                  : "rgba(110,168,254,0.04)",
-                borderRadius: 3,
-                p: { xs: 3, md: 5 },
-                textAlign: "center",
-                transition: "all 160ms ease",
-              }}
+              textColor="primary"
+              indicatorColor="primary"
+              sx={{ px: 2, pt: 1 }}
             >
-              <UploadFile
-                sx={{
-                  fontSize: 42,
-                  color: "primary.main",
-                }}
+              <Tab
+                value="single"
+                icon={<Description fontSize="small" />}
+                iconPosition="start"
+                label={selectedFile ? `Single Device Audit (${selectedFile.name})` : "Single Device Audit"}
               />
-
-              <Typography variant="h6" sx={{ mt: 1 }}>
-                Drop a supported configuration here
-              </Typography>
-
-              <Typography
-                color="text.secondary"
-                sx={{ mt: 0.75 }}
-              >
-                or select a prepared `.conf`, `.cfg`, or `.txt`
-                file
-              </Typography>
-
-              <Button
-                variant="outlined"
-                sx={{ mt: 2 }}
-                onClick={() => inputRef.current?.click()}
-              >
-                Browse files
-              </Button>
-
-              <input
-                ref={inputRef}
-                hidden
-                type="file"
-                accept=".conf,.cfg,.txt,text/plain"
-                onChange={(event) =>
-                  selectFile(event.target.files?.[0])
+              <Tab
+                value="bulk"
+                icon={<Layers fontSize="small" />}
+                iconPosition="start"
+                label={
+                  batchFiles.length > 0
+                    ? `Bulk Fleet Ingestion (${batchFiles.length})`
+                    : "Bulk Fleet Ingestion"
                 }
               />
-            </Box>
+            </Tabs>
+          </Box>
 
-            {selectedFile && (
-              <Paper variant="outlined" sx={{ p: 2 }}>
-                <Stack
-                  direction={{ xs: "column", sm: "row" }}
-                  spacing={1.5}
-                  alignItems={{ sm: "center" }}
+          <CardContent sx={{ p: { xs: 2, md: 3 } }}>
+            {ingestionTab === "single" ? (
+              <Stack spacing={2.5}>
+                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
+                  <TextField
+                    size="small"
+                    label="Open Stored Analysis by ID"
+                    placeholder="Enter existing analysis UUID (e.g. from seed or prior run)"
+                    value={storedAnalysisId}
+                    onChange={(event) => setStoredAnalysisId(event.target.value)}
+                    fullWidth
+                  />
+                  <Button
+                    variant="outlined"
+                    disabled={!storedAnalysisId.trim()}
+                    onClick={() => void openBatchAnalysis(storedAnalysisId.trim())}
+                  >
+                    Open
+                  </Button>
+                </Stack>
+
+                <Box
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setIsDragging(true);
+                  }}
+                  onDragLeave={() => setIsDragging(false)}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setIsDragging(false);
+                    selectFile(event.dataTransfer.files[0]);
+                  }}
+                  sx={{
+                    border: "1px dashed",
+                    borderColor: isDragging
+                      ? "secondary.main"
+                      : "rgba(110,168,254,0.45)",
+                    bgcolor: isDragging
+                      ? "rgba(37,208,177,0.08)"
+                      : "rgba(110,168,254,0.04)",
+                    borderRadius: 3,
+                    p: { xs: 3, md: 5 },
+                    textAlign: "center",
+                    transition: "all 160ms ease",
+                  }}
                 >
-                  <Box sx={{ flexGrow: 1 }}>
-                    <Typography fontWeight={700}>
-                      {selectedFile.name}
-                    </Typography>
+                  <UploadFile
+                    sx={{
+                      fontSize: 42,
+                      color: "primary.main",
+                    }}
+                  />
 
-                    <Typography
-                      variant="body2"
-                      color="text.secondary"
-                    >
-                      {formatBytes(selectedFile.size)} · ready
-                      for analysis
-                    </Typography>
-                  </Box>
+                  <Typography variant="h6" sx={{ mt: 1 }}>
+                    Drop a supported configuration here
+                  </Typography>
+
+                  <Typography
+                    color="text.secondary"
+                    sx={{ mt: 0.75 }}
+                  >
+                    or select a prepared `.conf`, `.cfg`, or `.txt` file
+                  </Typography>
 
                   <Button
-                    size="small"
+                    variant="outlined"
+                    sx={{ mt: 2 }}
                     onClick={() => inputRef.current?.click()}
                   >
-                    Replace
+                    Browse files
                   </Button>
 
+                  <input
+                    ref={inputRef}
+                    hidden
+                    type="file"
+                    accept=".conf,.cfg,.txt,text/plain"
+                    onChange={(event) =>
+                      selectFile(event.target.files?.[0])
+                    }
+                  />
+                </Box>
+
+                {selectedFile && (
+                  <Paper variant="outlined" sx={{ p: 2 }}>
+                    <Stack
+                      direction={{ xs: "column", sm: "row" }}
+                      spacing={1.5}
+                      alignItems={{ sm: "center" }}
+                    >
+                      <Box sx={{ flexGrow: 1 }}>
+                        <Typography fontWeight={700}>
+                          {selectedFile.name}
+                        </Typography>
+
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                        >
+                          {formatBytes(selectedFile.size)} · ready for analysis
+                        </Typography>
+                      </Box>
+
+                      <Button
+                        size="small"
+                        onClick={() => inputRef.current?.click()}
+                      >
+                        Replace
+                      </Button>
+
+                      <Button
+                        size="small"
+                        color="inherit"
+                        onClick={removeFile}
+                      >
+                        Remove
+                      </Button>
+                    </Stack>
+                  </Paper>
+                )}
+
+                {workflowState === "UPLOADING" && (
+                  <Box>
+                    <Stack
+                      direction="row"
+                      justifyContent="space-between"
+                      sx={{ mb: 0.75 }}
+                    >
+                      <Typography
+                        variant="body2"
+                        color="text.secondary"
+                      >
+                        Uploading and analyzing configuration…
+                      </Typography>
+
+                      <Typography
+                        variant="body2"
+                        color="secondary.main"
+                      >
+                        Processing
+                      </Typography>
+                    </Stack>
+
+                    <LinearProgress />
+                  </Box>
+                )}
+
+                {errorMessage && (
+                  <Alert severity="error">{errorMessage}</Alert>
+                )}
+
+                <Stack direction="row" justifyContent="flex-end">
                   <Button
-                    size="small"
-                    color="inherit"
-                    onClick={removeFile}
+                    variant="contained"
+                    size="large"
+                    disabled={
+                      !selectedFile ||
+                      workflowState === "UPLOADING"
+                    }
+                    onClick={handleAnalyze}
                   >
-                    Remove
+                    {workflowState === "UPLOADING"
+                      ? "Analyzing…"
+                      : "Analyze Configuration"}
                   </Button>
                 </Stack>
-              </Paper>
-            )}
+              </Stack>
+            ) : (
+              <Stack spacing={3}>
+                <Box>
+                  <Typography variant="h6" fontWeight={700}>
+                    Multi-Device Fleet Ingestion & Audit
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                    Select or drag-and-drop up to 25 configuration files across Cisco IOS/IOS-XE, FortiGate/FortiOS, Palo Alto/PAN-OS, and AstraNet. Each configuration is parsed, mapped to Security IR, independently evaluated deterministically against CIS Controls v8, NIST SP 800-53 r5, DISA STIG, and ISO/IEC 27001:2022, and recorded in the integrity ledger.
+                  </Typography>
+                </Box>
 
-            {workflowState === "UPLOADING" && (
-              <Box>
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  sx={{ mb: 0.75 }}
+                <Box
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setBatchDragOver(true);
+                  }}
+                  onDragLeave={() => setBatchDragOver(false)}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setBatchDragOver(false);
+                    addBatchFiles(Array.from(event.dataTransfer.files));
+                  }}
+                  sx={{
+                    border: "2px dashed",
+                    borderColor: batchDragOver
+                      ? "secondary.main"
+                      : "rgba(110,168,254,0.45)",
+                    bgcolor: batchDragOver
+                      ? "rgba(37,208,177,0.08)"
+                      : "rgba(110,168,254,0.04)",
+                    borderRadius: 3,
+                    p: { xs: 3, md: 4 },
+                    textAlign: "center",
+                    transition: "all 160ms ease",
+                  }}
                 >
-                  <Typography
-                    variant="body2"
-                    color="text.secondary"
-                  >
-                    Uploading and analyzing configuration…
+                  <UploadFile sx={{ fontSize: 44, color: "primary.main" }} />
+                  <Typography variant="h6" sx={{ mt: 1 }}>
+                    Drop fleet configuration files here
                   </Typography>
-
-                  <Typography
-                    variant="body2"
-                    color="secondary.main"
-                  >
-                    Processing
+                  <Typography color="text.secondary" variant="body2" sx={{ mt: 0.5 }}>
+                    Supports multiple <code>.conf</code>, <code>.cfg</code>, and <code>.txt</code> files (up to 25 files, 1 MB max each)
                   </Typography>
-                </Stack>
+                  <Button
+                    variant="outlined"
+                    sx={{ mt: 2 }}
+                    onClick={() => batchInputRef.current?.click()}
+                  >
+                    Select Fleet Files
+                  </Button>
+                  <input
+                    ref={batchInputRef}
+                    hidden
+                    multiple
+                    type="file"
+                    accept=".conf,.cfg,.txt,text/plain"
+                    onChange={(event) =>
+                      addBatchFiles(Array.from(event.target.files ?? []))
+                    }
+                  />
+                </Box>
 
-                <LinearProgress />
-              </Box>
+                {batchFiles.length > 0 && (
+                  <Paper variant="outlined" sx={{ p: 2, bgcolor: "background.paper" }}>
+                    <Stack spacing={1.5}>
+                      <Stack direction="row" justifyContent="space-between" alignItems="center">
+                        <Typography variant="subtitle2" fontWeight={700}>
+                          Staged Fleet Configurations ({batchFiles.length} / 25)
+                        </Typography>
+                        <Button size="small" color="inherit" onClick={clearBatchFiles}>
+                          Clear All
+                        </Button>
+                      </Stack>
+                      <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                        {batchFiles.map((file, idx) => (
+                          <Chip
+                            key={`${file.name}-${idx}`}
+                            icon={<Description fontSize="small" />}
+                            label={`${file.name} (${formatBytes(file.size)})`}
+                            onDelete={() => removeBatchFile(idx)}
+                            variant="outlined"
+                            size="small"
+                          />
+                        ))}
+                      </Box>
+                      <Divider />
+                      <Stack direction="row" justifyContent="flex-end" spacing={1.5} alignItems="center">
+                        <Button
+                          variant="contained"
+                          size="large"
+                          disabled={!batchFiles.length || batchBusy}
+                          onClick={handleBatchAnalyze}
+                        >
+                          {batchBusy
+                            ? "Analyzing Fleet…"
+                            : `Analyze Fleet (${batchFiles.length} Configurations)`}
+                        </Button>
+                      </Stack>
+                    </Stack>
+                  </Paper>
+                )}
+
+                {batchBusy && (
+                  <Box>
+                    <Stack direction="row" justifyContent="space-between" sx={{ mb: 0.75 }}>
+                      <Typography variant="body2" color="text.secondary">
+                        Processing fleet configurations in parallel (Parsing, Security IR, Compliance Engine, Ledger)…
+                      </Typography>
+                      <Typography variant="body2" color="secondary.main">
+                        Batch Ingestion In Progress
+                      </Typography>
+                    </Stack>
+                    <LinearProgress />
+                  </Box>
+                )}
+
+                {errorMessage && (
+                  <Alert severity="error">{errorMessage}</Alert>
+                )}
+
+                {batch && (
+                  <Stack spacing={2.5} id="batch-summary-card">
+                    <Paper
+                      variant="outlined"
+                      sx={{
+                        p: 2.5,
+                        borderColor:
+                          batch.status === "COMPLETED"
+                            ? "success.main"
+                            : batch.status === "FAILED"
+                              ? "error.main"
+                              : "warning.main",
+                        bgcolor: "rgba(110,168,254,0.03)",
+                      }}
+                    >
+                      <Stack spacing={2}>
+                        <Stack
+                          direction={{ xs: "column", sm: "row" }}
+                          justifyContent="space-between"
+                          alignItems={{ sm: "center" }}
+                          spacing={1}
+                        >
+                          <Box>
+                            <Typography variant="overline" color="text.secondary">
+                              BATCH INGESTION REPORT
+                            </Typography>
+                            <Typography variant="h6" fontWeight={700}>
+                              Batch ID: <code>{batch.batch_id}</code>
+                            </Typography>
+                          </Box>
+                          <Stack direction="row" spacing={1} alignItems="center">
+                            <Chip
+                              label={`Status: ${batch.status}`}
+                              color={
+                                batch.status === "COMPLETED"
+                                  ? "success"
+                                  : batch.status === "FAILED"
+                                    ? "error"
+                                    : "warning"
+                              }
+                              size="medium"
+                            />
+                            {batch.created_at && (
+                              <Typography variant="caption" color="text.secondary">
+                                {new Date(batch.created_at).toLocaleTimeString()}
+                              </Typography>
+                            )}
+                          </Stack>
+                        </Stack>
+
+                        <Divider />
+
+                        <Grid container spacing={2}>
+                          <Grid size={{ xs: 6, sm: 3 }}>
+                            <Paper variant="outlined" sx={{ p: 1.5, textAlign: "center" }}>
+                              <Typography variant="h5" fontWeight={700}>
+                                {batch.total_items}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Total Files
+                              </Typography>
+                            </Paper>
+                          </Grid>
+                          <Grid size={{ xs: 6, sm: 3 }}>
+                            <Paper variant="outlined" sx={{ p: 1.5, textAlign: "center" }}>
+                              <Typography variant="h5" fontWeight={700} color="success.main">
+                                {batch.successful_items}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Successful
+                              </Typography>
+                            </Paper>
+                          </Grid>
+                          <Grid size={{ xs: 6, sm: 3 }}>
+                            <Paper variant="outlined" sx={{ p: 1.5, textAlign: "center" }}>
+                              <Typography variant="h5" fontWeight={700} color="warning.main">
+                                {batch.duplicate_items}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Duplicates (SHA-256)
+                              </Typography>
+                            </Paper>
+                          </Grid>
+                          <Grid size={{ xs: 6, sm: 3 }}>
+                            <Paper variant="outlined" sx={{ p: 1.5, textAlign: "center" }}>
+                              <Typography
+                                variant="h5"
+                                fontWeight={700}
+                                color={batch.failed_items > 0 ? "error.main" : "text.primary"}
+                              >
+                                {batch.failed_items}
+                              </Typography>
+                              <Typography variant="caption" color="text.secondary">
+                                Failed
+                              </Typography>
+                            </Paper>
+                          </Grid>
+                        </Grid>
+
+                        <Grid container spacing={2}>
+                          <Grid size={{ xs: 12, md: 6 }}>
+                            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                              Detected Fleet Vendors
+                            </Typography>
+                            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                              {(batch.summary?.vendors_detected ?? []).length > 0 ? (
+                                batch.summary?.vendors_detected?.map((v) => (
+                                  <Chip
+                                    key={v}
+                                    label={vendorLabel(v)}
+                                    color="primary"
+                                    variant="outlined"
+                                    size="small"
+                                  />
+                                ))
+                              ) : (
+                                <Typography variant="body2" color="text.secondary">
+                                  No vendor signatures detected
+                                </Typography>
+                              )}
+                            </Box>
+                          </Grid>
+                          <Grid size={{ xs: 12, md: 6 }}>
+                            <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                              Aggregate Control Findings Across Fleet
+                            </Typography>
+                            <Stack direction="row" spacing={1} flexWrap="wrap">
+                              <Chip
+                                label={`PASS: ${batch.summary?.pass_count ?? 0}`}
+                                color="success"
+                                size="small"
+                              />
+                              <Chip
+                                label={`FAIL: ${batch.summary?.fail_count ?? 0}`}
+                                color="error"
+                                size="small"
+                              />
+                              <Chip
+                                label={`UNKNOWN: ${batch.summary?.unknown_count ?? 0}`}
+                                color="warning"
+                                size="small"
+                              />
+                              {(batch.summary?.not_applicable_count ?? 0) > 0 && (
+                                <Chip
+                                  label={`N/A: ${batch.summary?.not_applicable_count ?? 0}`}
+                                  size="small"
+                                />
+                              )}
+                            </Stack>
+                          </Grid>
+                        </Grid>
+                      </Stack>
+                    </Paper>
+
+                    {batchItems.length > 0 && (
+                      <Paper variant="outlined">
+                        <Box sx={{ p: 2, borderBottom: 1, borderColor: "divider" }}>
+                          <Typography variant="subtitle1" fontWeight={700}>
+                            Per-Device Compliance Breakdown ({batchItems.length} Devices)
+                          </Typography>
+                          <Typography variant="body2" color="text.secondary">
+                            Click <strong>Inspect</strong> to view deep Security IR, framework mappings, evidence provenance, and simulation remediation. Click <strong>PDF</strong> to download an individual device audit report.
+                          </Typography>
+                        </Box>
+                        <Table size="small">
+                          <TableHead>
+                            <TableRow>
+                              <TableCell>Configuration</TableCell>
+                              <TableCell>Vendor & Platform</TableCell>
+                              <TableCell>Device Identity</TableCell>
+                              <TableCell>Status</TableCell>
+                              <TableCell>Compliance</TableCell>
+                              <TableCell>Findings</TableCell>
+                              <TableCell align="right">Actions</TableCell>
+                            </TableRow>
+                          </TableHead>
+                          <TableBody>
+                            {batchItems.map((item) => (
+                              <TableRow
+                                key={item.batch_item_id}
+                                sx={{
+                                  bgcolor:
+                                    inspectedBatchItemId === item.batch_item_id
+                                      ? "rgba(37,208,177,0.08)"
+                                      : undefined,
+                                }}
+                              >
+                                <TableCell>
+                                  <Typography variant="body2" fontWeight={600}>
+                                    {item.source_filename}
+                                  </Typography>
+                                  {item.content_sha256 && (
+                                    <Tooltip title={`Full SHA-256: ${item.content_sha256}`}>
+                                      <Typography
+                                        variant="caption"
+                                        color="text.secondary"
+                                        sx={{ fontFamily: "monospace", cursor: "help" }}
+                                      >
+                                        SHA-256: {item.content_sha256.substring(0, 10)}…
+                                      </Typography>
+                                    </Tooltip>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  <Stack spacing={0.5} alignItems="flex-start">
+                                    <Chip
+                                      label={item.vendor ? vendorLabel(item.vendor) : "Unknown"}
+                                      size="small"
+                                      variant="outlined"
+                                    />
+                                    {item.platform && (
+                                      <Typography variant="caption" color="text.secondary">
+                                        Platform: {item.platform}
+                                      </Typography>
+                                    )}
+                                  </Stack>
+                                </TableCell>
+                                <TableCell>
+                                  <Stack spacing={0.25}>
+                                    <Typography variant="body2" fontWeight={600}>
+                                      {item.hostname || "Not present in configuration"}
+                                    </Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                      Model: {item.device_model || "Not present"} · SN: {item.serial_number || "Not present"}
+                                    </Typography>
+                                  </Stack>
+                                </TableCell>
+                                <TableCell>
+                                  <Chip
+                                    label={item.processing_status}
+                                    size="small"
+                                    color={
+                                      item.processing_status === "COMPLETED"
+                                        ? "success"
+                                        : item.processing_status === "DUPLICATE"
+                                          ? "warning"
+                                          : item.processing_status === "FAILED"
+                                            ? "error"
+                                            : "default"
+                                    }
+                                  />
+                                  {item.error_message && (
+                                    <Typography variant="caption" color="error" display="block">
+                                      {item.error_message}
+                                    </Typography>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {item.compliance_status ? (
+                                    <Chip
+                                      label={item.compliance_status}
+                                      size="small"
+                                      color={
+                                        item.compliance_status === "PASS"
+                                          ? "success"
+                                          : item.compliance_status === "FAIL"
+                                            ? "error"
+                                            : item.compliance_status === "UNKNOWN"
+                                              ? "warning"
+                                              : "info"
+                                      }
+                                    />
+                                  ) : (
+                                    <Typography variant="caption" color="text.secondary">
+                                      —
+                                    </Typography>
+                                  )}
+                                </TableCell>
+                                <TableCell>
+                                  {item.pass_count !== undefined && item.pass_count !== null ? (
+                                    <Stack direction="row" spacing={0.5}>
+                                      <Chip
+                                        label={`P:${item.pass_count}`}
+                                        size="small"
+                                        color="success"
+                                        variant="outlined"
+                                        sx={{ minWidth: 28, height: 20, fontSize: "0.7rem" }}
+                                      />
+                                      <Chip
+                                        label={`F:${item.fail_count ?? 0}`}
+                                        size="small"
+                                        color="error"
+                                        variant="outlined"
+                                        sx={{ minWidth: 28, height: 20, fontSize: "0.7rem" }}
+                                      />
+                                      <Chip
+                                        label={`U:${item.unknown_count ?? 0}`}
+                                        size="small"
+                                        color="warning"
+                                        variant="outlined"
+                                        sx={{ minWidth: 28, height: 20, fontSize: "0.7rem" }}
+                                      />
+                                    </Stack>
+                                  ) : (
+                                    <Typography variant="caption" color="text.secondary">
+                                      —
+                                    </Typography>
+                                  )}
+                                </TableCell>
+                                <TableCell align="right">
+                                  <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                    {item.analysis_id && (
+                                      <Button
+                                        size="small"
+                                        variant={
+                                          inspectedBatchItemId === item.batch_item_id
+                                            ? "contained"
+                                            : "outlined"
+                                        }
+                                        startIcon={<Visibility fontSize="small" />}
+                                        onClick={() =>
+                                          openBatchAnalysis(item.analysis_id as string, item.batch_item_id)
+                                        }
+                                      >
+                                        Inspect
+                                      </Button>
+                                    )}
+                                    {item.analysis_id && (
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        color="secondary"
+                                        startIcon={<PictureAsPdf fontSize="small" />}
+                                        disabled={reportBusy}
+                                        onClick={() =>
+                                          handleGenerateReport(
+                                            item.analysis_id as string,
+                                            item.source_filename,
+                                            item.batch_item_id
+                                          )
+                                        }
+                                      >
+                                        {downloadingReportId === item.batch_item_id
+                                          ? "Exporting…"
+                                          : "PDF"}
+                                      </Button>
+                                    )}
+                                  </Stack>
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </Paper>
+                    )}
+                  </Stack>
+                )}
+              </Stack>
             )}
+          </CardContent>
+        </Card>
+      )}
 
-            {errorMessage && (
-              <Alert severity="error">{errorMessage}</Alert>
-            )}
-
-            <Stack direction="row" justifyContent="flex-end">
-              <Button
-                variant="contained"
-                size="large"
-                disabled={
-                  !selectedFile ||
-                  workflowState === "UPLOADING"
-                }
-                onClick={handleAnalyze}
-              >
-                {workflowState === "UPLOADING"
-                  ? "Analyzing…"
-                  : "Analyze Configuration"}
-              </Button>
-            </Stack>
-          </Stack>
-        </CardContent>
-      </Card>
-
-      </>}
       {analysis && (
-        <Stack spacing={2.5}>
+        <Stack spacing={2.5} id="inspected-analysis-view">
+          {inspectedBatchItemId && (
+            <Alert
+              severity="info"
+              action={
+                <Button
+                  color="inherit"
+                  size="small"
+                  onClick={() => {
+                    setAnalysis(null);
+                    setInspectedBatchItemId(null);
+                  }}
+                >
+                  Close Inspection
+                </Button>
+              }
+            >
+              Viewing individual device inspection for{" "}
+              <strong>
+                {displayedAnalysis?.device?.hostname || displayedAnalysis?.filename}
+              </strong>{" "}
+              from Batch <code>{batch?.batch_id}</code>.
+            </Alert>
+          )}
           {isAstraNet && (
             <Card
               sx={{
@@ -906,12 +1496,11 @@ export default function AnalyzeConfigurationPage({
                     variant="caption"
                     color="text.secondary"
                   >
-                    Hostname
+                    Platform
                   </Typography>
 
                   <Typography sx={{ mt: 0.5 }}>
-                    {analysis.device.hostname ??
-                      "Not available"}
+                    {analysis.device.platform ?? "Not present in configuration"}
                   </Typography>
                 </Grid>
 
@@ -920,17 +1509,55 @@ export default function AnalyzeConfigurationPage({
                     variant="caption"
                     color="text.secondary"
                   >
-                    Version
+                    Hostname
+                  </Typography>
+
+                  <Typography sx={{ mt: 0.5 }}>
+                    {analysis.device.hostname ??
+                      "Not present in configuration"}
+                  </Typography>
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                  >
+                    OS Version
                   </Typography>
 
                   <Typography sx={{ mt: 0.5 }}>
                     {analysis.device.version ??
-                      "Not available"}
+                      "Not present in configuration"}
                   </Typography>
                 </Grid>
+
                 <Grid size={{ xs: 12, sm: 4 }}>
-                  <Typography variant="caption" color="text.secondary">Platform</Typography>
-                  <Typography sx={{ mt: 0.5 }}>{analysis.device.platform ?? "Not available"}</Typography>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                  >
+                    Model
+                  </Typography>
+
+                  <Typography sx={{ mt: 0.5 }}>
+                    {analysis.device.device_model ??
+                      "Not present in configuration"}
+                  </Typography>
+                </Grid>
+
+                <Grid size={{ xs: 12, sm: 4 }}>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                  >
+                    Serial Number
+                  </Typography>
+
+                  <Typography sx={{ mt: 0.5 }}>
+                    {analysis.device.serial_number ??
+                      "Not present in configuration"}
+                  </Typography>
                 </Grid>
               </Grid>
 
@@ -977,8 +1604,12 @@ export default function AnalyzeConfigurationPage({
               >
                 {reportBusy
                   ? "Generating report…"
-                  : "Generate PDF Report"}
+                  : "Download Individual Device Audit Report (PDF)"}
               </Button>
+
+              <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+                Comprehensive single PDF per device covering device identification, multi-framework compliance pass/fail with severity, exact evidence provenance, and step-by-step CLI remediation.
+              </Typography>
             </CardContent>
           </Card>
 
@@ -1119,39 +1750,38 @@ export default function AnalyzeConfigurationPage({
                     <Paper
                       variant="outlined"
                       sx={{
-                        p: 2,
+                        p: 2.5,
                         bgcolor:
                           "rgba(110,168,254,0.05)",
+                        border: "1px solid rgba(110,168,254,0.3)",
                       }}
                     >
                       <Stack spacing={2}>
                         <Box>
+                          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+                            <Chip label="AI CANDIDATE PROPOSAL" color="secondary" size="small" />
+                            <Chip label="AWAITING HUMAN REVIEW" color="warning" size="small" variant="outlined" />
+                            <Chip label="DETERMINISTIC EVALUATION UNCHANGED" color="default" size="small" variant="outlined" />
+                          </Stack>
+
                           <Typography
                             variant="overline"
                             color="secondary.main"
                             letterSpacing={1.2}
                           >
-                            AI PROPOSAL · DEMO INTERPRETATION PROVIDER
+                            AI PROPOSAL · BOUNDED INTERPRETATION PROVIDER
                           </Typography>
 
                           <Typography
                             variant="subtitle1"
                             fontWeight={700}
                           >
-                            HUMAN APPROVAL REQUIRED
+                            HUMAN APPROVAL REQUIRED (PS 26155 SAFETY INVARIANT)
                           </Typography>
 
-                          <Typography
-                            variant="body2"
-                            color="text.secondary"
-                            sx={{ mt: 0.5 }}
-                          >
-                            AI PROPOSAL IS NOT COMPLIANCE EVIDENCE. It is not deterministic evidence
-                            or a compliance result.
-                            Candidate interpretation only.
-                            Human approval is required; this
-                            does not change compliance.
-                          </Typography>
+                          <Alert severity="info" variant="outlined" sx={{ mt: 1, mb: 1 }}>
+                            <strong>Core Invariant:</strong> AI proposes → human reviews → approved knowledge is versioned → deterministic engine re-analyzes. AI suggestions NEVER alter compliance evaluations directly. This configuration remains UNKNOWN until an authorized reviewer approves or corrects this mapping.
+                          </Alert>
                         </Box>
 
                         <Typography variant="body2">
@@ -1242,6 +1872,7 @@ export default function AnalyzeConfigurationPage({
                         >
                           <Button
                             variant="contained"
+                            color="primary"
                             onClick={() =>
                               handleMappingDecision(
                                 "approve"
@@ -1254,7 +1885,7 @@ export default function AnalyzeConfigurationPage({
                           >
                             {mappingBusy
                               ? "Approving…"
-                              : "Approve"}
+                              : "Approve Mapping"}
                           </Button>
 
                           <Button
@@ -1271,11 +1902,12 @@ export default function AnalyzeConfigurationPage({
                           >
                             {mappingBusy
                               ? "Saving…"
-                              : "Correct + approve"}
+                              : "Correct & Approve"}
                           </Button>
 
                           <Button
                             color="error"
+                            variant="outlined"
                             onClick={() =>
                               handleMappingDecision(
                                 "reject"
@@ -1303,53 +1935,69 @@ export default function AnalyzeConfigurationPage({
                           ? "success"
                           : "warning"
                       }
+                      sx={{ p: 2 }}
                     >
-                      <Stack spacing={1.25}>
-                        <Typography variant="body2">
-                          <strong>
-                            APPROVED MAPPING v
-                            {mappingDecision.mapping.version}
-                          </strong>{" "}
-                          · {mappingDecision.mapping.status} ·{" "}
-                          {mappingDecision.mapping.active
-                            ? "ACTIVE"
-                            : "INACTIVE"}{" "}
-                          · Human action by{" "}
-                          {mappingDecision.mapping.reviewer_id ??
-                            "unknown"}
-                          .
-                        </Typography>
+                      <Stack spacing={1.5}>
+                        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                          <Chip
+                            label={`APPROVED MAPPING v${mappingDecision.mapping.version}`}
+                            color="success"
+                            size="small"
+                          />
+                          <Chip
+                            label={mappingDecision.mapping.status}
+                            color={mappingDecision.mapping.status === "APPROVED" ? "success" : "warning"}
+                            size="small"
+                            variant="outlined"
+                          />
+                          <Chip
+                            label={mappingDecision.mapping.active ? "ACTIVE" : "INACTIVE"}
+                            size="small"
+                            variant="outlined"
+                          />
+                          <Chip
+                            label="STORED IN INTEGRITY LEDGER"
+                            color="info"
+                            size="small"
+                            variant="outlined"
+                          />
+                        </Stack>
 
                         <Typography variant="body2">
-                          Compliance remains unchanged and
-                          the pattern remains UNKNOWN until
-                          explicit re-analysis.
+                          <strong>Human Review Attribution:</strong> Action performed by{" "}
+                          <strong>{mappingDecision.mapping.reviewer_id ?? "unknown"}</strong> ·
+                          Stored with cryptographic hash chain ledger verification.
                         </Typography>
 
-                        {mappingDecision.mapping.active && (
-                          <Button variant="outlined" color="warning" onClick={handleDeactivateKnowledge} disabled={mappingBusy || !reviewerId.trim()}>
-                            Deactivate knowledge
-                          </Button>
-                        )}
+                        <Typography variant="body2" sx={{ fontStyle: "italic", color: "text.secondary" }}>
+                          Under the PS 26155 deterministic contract, creating or approving a mapping does not alter historical analysis in place. The control result remains UNKNOWN until an explicit deterministic re-analysis is executed.
+                        </Typography>
 
-                        {mappingDecision.mapping.status ===
-                          "APPROVED" &&
-                          mappingDecision.mapping.active &&
-                          !reanalysis && (
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ pt: 0.5 }}>
+                          {mappingDecision.mapping.status === "APPROVED" &&
+                            mappingDecision.mapping.active &&
+                            !reanalysis && (
+                              <Button
+                                variant="contained"
+                                color="success"
+                                onClick={handleReanalyze}
+                                disabled={reanalysisBusy}
+                              >
+                                {reanalyzingLabel(reanalysisBusy)}
+                              </Button>
+                            )}
+
+                          {mappingDecision.mapping.active && (
                             <Button
-                              variant="contained"
-                              onClick={handleReanalyze}
-                              disabled={reanalysisBusy}
-                              sx={{
-                                alignSelf:
-                                  "flex-start",
-                              }}
+                              variant="outlined"
+                              color="warning"
+                              onClick={handleDeactivateKnowledge}
+                              disabled={mappingBusy || !reviewerId.trim()}
                             >
-                              {reanalyzingLabel(
-                                reanalysisBusy
-                              )}
+                              Deactivate knowledge
                             </Button>
                           )}
+                        </Stack>
                       </Stack>
                     </Alert>
                   )}
@@ -1631,6 +2279,8 @@ export default function AnalyzeConfigurationPage({
                           alignItems={{
                             sm: "center",
                           }}
+                          flexWrap="wrap"
+                          useFlexGap
                         >
                           <Typography
                             variant="subtitle1"
@@ -1641,6 +2291,13 @@ export default function AnalyzeConfigurationPage({
                           </Typography>
 
                           <Chip
+                            label={remediation.platform ?? remediation.vendor}
+                            size="small"
+                            variant="outlined"
+                            sx={{ fontWeight: 600, fontSize: "0.75rem" }}
+                          />
+
+                          <Chip
                             label={`Risk: ${remediation.risk_level}`}
                             size="small"
                             color="warning"
@@ -1648,9 +2305,27 @@ export default function AnalyzeConfigurationPage({
                           <Chip label={remediation.safety_classification.replaceAll("_", " ")} size="small" color="info" />
                         </Stack>
 
+                        {remediation.finding && (
+                          <Alert severity="error" variant="outlined" sx={{ py: 0.5, px: 1.5, fontSize: "0.85rem" }}>
+                            <strong>Finding / Problem:</strong> {remediation.finding}
+                          </Alert>
+                        )}
+
                         <Typography variant="body2">
                           {remediation.description}
                         </Typography>
+
+                        {remediation.explanation && (
+                          <Typography variant="body2" color="text.secondary">
+                            <strong>Rationale:</strong> {remediation.explanation}
+                          </Typography>
+                        )}
+
+                        {remediation.applicability_notes && (
+                          <Typography variant="body2" color="text.secondary" sx={{ fontStyle: "italic", bgcolor: "action.hover", p: 1, borderRadius: 1, borderLeft: "3px solid #f0883e" }}>
+                            <strong>Applicability &amp; Constraints:</strong> {remediation.applicability_notes}
+                          </Typography>
+                        )}
 
                         <Typography
                           variant="caption"
@@ -1661,23 +2336,56 @@ export default function AnalyzeConfigurationPage({
                             ", "
                           )}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">{remediation.remediation_id} · {remediation.vendor} · {remediation.simulation_capability}</Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {remediation.remediation_id} · {remediation.platform ?? remediation.vendor} · {remediation.simulation_capability}
+                        </Typography>
 
-                        <Box
-                          component="pre"
-                          sx={{
-                            mt: 0,
-                            mb: 0,
-                            p: 1.5,
-                            overflowX: "auto",
-                            borderRadius: 1.5,
-                            bgcolor: "#06111f",
-                            color: "#b7d8ff",
-                            fontFamily: "monospace",
-                            fontSize: "0.8rem",
-                          }}
-                        >
-                          {remediation.commands.join("\n")}
+                        {remediation.remediation_steps && remediation.remediation_steps.length > 0 && (
+                          <Box sx={{ mt: 0.5 }}>
+                            <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
+                              Step-by-Step Remediation Guidance
+                            </Typography>
+                            <Stack spacing={0.5} sx={{ mt: 0.5 }}>
+                              {remediation.remediation_steps.map((step, idx) => (
+                                <Box
+                                  key={idx}
+                                  sx={{
+                                    p: 0.75,
+                                    bgcolor: "#081627",
+                                    color: "#c2e0ff",
+                                    borderRadius: 1,
+                                    fontFamily: "monospace",
+                                    fontSize: "0.78rem",
+                                    borderLeft: "3px solid #388bfd",
+                                  }}
+                                >
+                                  {step}
+                                </Box>
+                              ))}
+                            </Stack>
+                          </Box>
+                        )}
+
+                        <Box sx={{ mt: 0.5 }}>
+                          <Typography variant="caption" fontWeight={700} color="text.secondary" sx={{ textTransform: "uppercase", letterSpacing: 0.5 }}>
+                            CLI Commands Sequence (Guidance Only)
+                          </Typography>
+                          <Box
+                            component="pre"
+                            sx={{
+                              mt: 0.5,
+                              mb: 0,
+                              p: 1.5,
+                              overflowX: "auto",
+                              borderRadius: 1.5,
+                              bgcolor: "#06111f",
+                              color: "#b7d8ff",
+                              fontFamily: "monospace",
+                              fontSize: "0.8rem",
+                            }}
+                          >
+                            {remediation.commands.join("\n")}
+                          </Box>
                         </Box>
 
                         <Button
@@ -1689,6 +2397,7 @@ export default function AnalyzeConfigurationPage({
                           sx={{
                             alignSelf:
                               "flex-start",
+                            mt: 0.5,
                           }}
                         >
                           {simulationBusy
@@ -1852,6 +2561,9 @@ export default function AnalyzeConfigurationPage({
                       }. Select a control to inspect its evidence.`
                     : "Select a control to inspect its source evidence."}
                 </Typography>
+                <Alert severity="info" variant="outlined" sx={{ mt: 1.5, fontSize: "0.85rem" }}>
+                  <strong>Compliance Authority:</strong> PASS / FAIL / UNKNOWN determinations are made exclusively by the deterministic control engine. Framework references (CIS, NIST, DISA STIG, ISO 27001) are advisory cross-references only.
+                </Alert>
               </Box>
 
               <Box sx={{ overflowX: "auto" }}>
@@ -1860,7 +2572,9 @@ export default function AnalyzeConfigurationPage({
                     <TableRow>
                       <TableCell>Control ID</TableCell>
                       <TableCell>Control name</TableCell>
+                      <TableCell>Severity</TableCell>
                       <TableCell>Result</TableCell>
+                      <TableCell>Frameworks</TableCell>
                       <TableCell>Expected</TableCell>
                       <TableCell>Actual</TableCell>
                       <TableCell>Action</TableCell>
@@ -1909,6 +2623,28 @@ export default function AnalyzeConfigurationPage({
                           </TableCell>
 
                           <TableCell>
+                            {result.severity ? (
+                              <Chip
+                                label={result.severity}
+                                size="small"
+                                color={
+                                  result.severity === "CRITICAL"
+                                    ? "error"
+                                    : result.severity === "HIGH"
+                                    ? "warning"
+                                    : result.severity === "MEDIUM"
+                                    ? "info"
+                                    : "default"
+                                }
+                                variant="outlined"
+                                sx={{ fontWeight: 600, fontSize: "0.7rem", height: 22 }}
+                              />
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">—</Typography>
+                            )}
+                          </TableCell>
+
+                          <TableCell>
                             <Chip
                               label={result.result}
                               color={statusColor(
@@ -1916,6 +2652,26 @@ export default function AnalyzeConfigurationPage({
                               )}
                               size="small"
                             />
+                          </TableCell>
+
+                          <TableCell>
+                            {result.framework_mappings && result.framework_mappings.length > 0 ? (
+                              <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap sx={{ maxWidth: 220 }}>
+                                {result.framework_mappings.map((fm, idx) => (
+                                  <Chip
+                                    key={`${fm.framework_name}-${fm.reference_id}-${idx}`}
+                                    label={`${fm.framework_name} ${fm.reference_id}`}
+                                    size="small"
+                                    variant={fm.mapping_status === "PROTOTYPE" ? "outlined" : "filled"}
+                                    color={fm.mapping_status === "PROTOTYPE" ? "default" : "primary"}
+                                    sx={{ fontSize: "0.68rem", height: 20 }}
+                                    title={fm.title ? `${fm.title}${fm.mapping_status === "PROTOTYPE" ? " (Prototype/Internal)" : ""}` : undefined}
+                                  />
+                                ))}
+                              </Stack>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary">—</Typography>
+                            )}
                           </TableCell>
 
                           <TableCell>
@@ -1995,16 +2751,39 @@ export default function AnalyzeConfigurationPage({
                   {selectedResult.control_name}
                 </Typography>
 
-                <Chip
-                  label={selectedResult.result}
-                  color={statusColor(
-                    selectedResult.result
+                <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                  <Chip
+                    label={selectedResult.result}
+                    color={statusColor(
+                      selectedResult.result
+                    )}
+                    size="small"
+                  />
+                  {selectedResult.severity && (
+                    <Chip
+                      label={`Severity: ${selectedResult.severity}`}
+                      size="small"
+                      variant="outlined"
+                      color={
+                        selectedResult.severity === "CRITICAL"
+                          ? "error"
+                          : selectedResult.severity === "HIGH"
+                          ? "warning"
+                          : selectedResult.severity === "MEDIUM"
+                          ? "info"
+                          : "default"
+                      }
+                      sx={{ fontWeight: 600 }}
+                    />
                   )}
-                  size="small"
-                  sx={{
-                    alignSelf: "flex-start",
-                  }}
-                />
+                  {selectedResult.category && (
+                    <Chip
+                      label={selectedResult.category}
+                      size="small"
+                      variant="outlined"
+                    />
+                  )}
+                </Stack>
               </Stack>
 
               <IconButton
@@ -2037,6 +2816,47 @@ export default function AnalyzeConfigurationPage({
                 >
                   {selectedResult.explanation}
                 </Alert>
+
+                {selectedResult.framework_mappings && selectedResult.framework_mappings.length > 0 && (
+                  <Paper variant="outlined" sx={{ p: 2, bgcolor: "action.hover" }}>
+                    <Typography variant="subtitle2" fontWeight={700} gutterBottom>
+                      Compliance Framework Cross-References (Advisory)
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 1.5 }}>
+                      Advisory cross-references to published security standards. Deterministic engine rules remain the sole compliance evaluation authority.
+                    </Typography>
+                    <Table size="small">
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 600 }}>Framework</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Version</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Reference ID</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                          <TableCell sx={{ fontWeight: 600 }}>Title</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {selectedResult.framework_mappings.map((fm, idx) => (
+                          <TableRow key={idx}>
+                            <TableCell><strong>{fm.framework_name}</strong></TableCell>
+                            <TableCell>{fm.framework_version ?? "—"}</TableCell>
+                            <TableCell sx={{ fontFamily: "monospace", fontWeight: 600 }}>{fm.reference_id}</TableCell>
+                            <TableCell>
+                              <Chip
+                                label={fm.mapping_status ?? "VERIFIED"}
+                                size="small"
+                                color={fm.mapping_status === "PROTOTYPE" ? "default" : "info"}
+                                variant={fm.mapping_status === "PROTOTYPE" ? "outlined" : "filled"}
+                                sx={{ fontSize: "0.65rem", height: 18 }}
+                              />
+                            </TableCell>
+                            <TableCell>{fm.title ?? "—"}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </Paper>
+                )}
 
                 {selectedEvidence.map(
                   (item, index) => (

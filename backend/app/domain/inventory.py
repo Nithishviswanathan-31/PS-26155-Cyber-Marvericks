@@ -15,6 +15,7 @@ class Device(BaseModel):
     vendor: str = Field(min_length=1)
     platform: str | None = None
     software_version: str | None = None
+    device_model: str | None = None
     serial_number: str | None = None
     configuration_source: Literal["UPLOAD"] = "UPLOAD"
     metadata: dict[str, Any] = Field(default_factory=dict)

@@ -216,10 +216,10 @@ node --test tests/auth-http.test.mjs
 
 ## Authenticated demo workflows
 
-1. **Standard audit:** sign in, upload a Cisco configuration, inspect the deterministic controls and evidence, then open history, generate a PDF report, and verify integrity.
-2. **Remediation:** begin with a non-compliant configuration, inspect evidence, simulate a supported remediation, review before/after state, explicitly re-analyze the simulation, then inspect the deterministic result, report, and integrity reference.
+1. **Standard audit:** sign in, upload a Cisco, FortiGate, or Palo Alto configuration, inspect extracted device metadata, deterministic controls, multi-framework compliance mappings (CIS Controls v8, NIST SP 800-53 r5, DISA STIG, ISO/IEC 27001:2022), and source evidence, then generate an evidence-backed PDF report and verify integrity.
+2. **Remediation simulation:** begin with a non-compliant configuration, inspect evidence, review device-specific step-by-step CLI remediation guidance, simulate a supported remediation, review before/after state, explicitly re-analyze the simulation, and inspect the deterministic result.
 3. **Unknown / AI:** upload the synthetic AstraNet unknown-pattern fixture, retain `UNKNOWN`, generate an interpretation proposal, have a reviewer approve a mapping, then explicitly re-analyze to produce deterministic evidence and an adaptive knowledge record.
-4. **Batch:** submit multiple configurations, including mixed valid and invalid items, and inspect per-item results, device/configuration associations, batch history, and dashboard totals.
+4. **Bulk fleet audit:** switch to the **Bulk Fleet Ingestion** dashboard, select up to 25 configuration files across multiple vendors (Cisco, FortiGate, Palo Alto, AstraNet), inspect fleet summary metrics and per-device compliance breakdowns, inspect any device directly, and export individual device PDF reports.
 5. **RBAC:** use `ADMIN` for user administration, `AUDITOR` for audit workflows, and `REVIEWER` for interpretation, mapping, and knowledge review. Forbidden operations return `403` from the server.
 
 ## Validation status

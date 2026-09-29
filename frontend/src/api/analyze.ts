@@ -1,4 +1,16 @@
 import { authFetch as fetch } from "./http";
+export {
+  type ControlSeverity,
+  type FrameworkMappingSummary,
+  isSeverity,
+  parseFrameworkMappings,
+  parseResults,
+} from "./framework-parsers";
+import {
+  type ControlSeverity,
+  type FrameworkMappingSummary,
+  parseResults,
+} from "./framework-parsers";
 export type ComplianceResult =
   | "PASS"
   | "FAIL"
@@ -29,6 +41,9 @@ export interface ControlResultSummary {
   expected: JsonValue;
   actual: JsonValue;
   explanation: string;
+  severity?: ControlSeverity | null;
+  category?: string | null;
+  framework_mappings?: FrameworkMappingSummary[];
 }
 
 export interface EvidenceRecord {
@@ -103,6 +118,32 @@ export interface BatchItem {
   error_message: string | null;
   duplicate_of_configuration_id: string | null;
   compliance_status: "PASS" | "FAIL" | "UNKNOWN" | "MIXED" | null;
+  vendor?: string | null;
+  platform?: string | null;
+  hostname?: string | null;
+  device_model?: string | null;
+  serial_number?: string | null;
+  pass_count?: number;
+  fail_count?: number;
+  unknown_count?: number;
+  not_applicable_count?: number;
+}
+
+export interface BatchSummary {
+  total: number;
+  processed: number;
+  successful: number;
+  failed: number;
+  duplicates: number;
+  pass_analyses: number;
+  fail_analyses: number;
+  unknown_analyses: number;
+  vendors_detected?: string[];
+  devices_analyzed?: string[];
+  pass_count?: number;
+  fail_count?: number;
+  unknown_count?: number;
+  not_applicable_count?: number;
 }
 
 export interface BatchAnalysis {
@@ -113,7 +154,9 @@ export interface BatchAnalysis {
   successful_items: number;
   failed_items: number;
   duplicate_items: number;
-  summary: { total: number; processed: number; successful: number; failed: number; duplicates: number; pass_analyses: number; fail_analyses: number; unknown_analyses: number };
+  summary: BatchSummary;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface RecognizedPatternSummary {
@@ -206,36 +249,7 @@ const parseDevice = (value: unknown): AnalysisDevice | null => {
   };
 };
 
-const parseResults = (value: unknown): ControlResultSummary[] | null => {
-  if (!Array.isArray(value)) return null;
-  const results: ControlResultSummary[] = [];
-  for (const item of value) {
-    if (!isRecord(item)) return null;
-    const controlId = requiredString(item, "control_id");
-    const controlName = requiredString(item, "control_name");
-    const explanation = requiredString(item, "explanation");
-    if (
-      controlId === null ||
-      controlName === null ||
-      explanation === null ||
-      !isComplianceResult(item.result) ||
-      !isJsonValue(item.expected) ||
-      !isJsonValue(item.actual)
-    ) {
-      return null;
-    }
-    results.push({
-      control_id: controlId,
-      control_name: controlName,
-      diagnostic_of: optionalString(item, "diagnostic_of"),
-      result: item.result,
-      expected: item.expected,
-      actual: item.actual,
-      explanation,
-    });
-  }
-  return results;
-};
+
 
 const parseEvidence = (value: unknown): EvidenceRecord[] | null => {
   if (!Array.isArray(value)) return null;

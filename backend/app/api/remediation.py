@@ -122,12 +122,15 @@ def simulate_remediation(analysis_id: str, request: SimulationRequest, http_requ
         results=[
             ControlResultSummary(
                 control_id=evaluation.control_id,
-               control_name=evaluation.control_name,
+                control_name=evaluation.control_name,
                 diagnostic_of=next(c.diagnostic_of for c in controls if c.control_id == evaluation.control_id),
                 result=evaluation.result,
                 expected=evaluation.expected,
                 actual=evaluation.actual,
                 explanation=evaluation.explanation,
+                severity=evaluation.severity,
+                category=evaluation.category,
+                framework_mappings=evaluation.framework_mappings,
             )
             for evaluation in evaluations
         ],
@@ -172,7 +175,12 @@ def reanalyze_simulation(simulation_id: str, http_request: Request) -> AnalysisR
     response = AnalysisResponse(
         analysis_id=str(uuid4()), filename=original.filename, vendor=original.vendor, device=original.device,
         configuration=original.configuration, parent_analysis_id=original.analysis_id, reanalyzed=True,
-        results=[ControlResultSummary(control_id=e.control_id, control_name=e.control_name, diagnostic_of=next(c.diagnostic_of for c in controls if c.control_id == e.control_id), result=e.result, expected=e.expected, actual=e.actual, explanation=e.explanation) for e in evaluations],
+        results=[ControlResultSummary(
+            control_id=e.control_id, control_name=e.control_name,
+            diagnostic_of=next(c.diagnostic_of for c in controls if c.control_id == e.control_id),
+            result=e.result, expected=e.expected, actual=e.actual, explanation=e.explanation,
+            severity=e.severity, category=e.category, framework_mappings=e.framework_mappings,
+        ) for e in evaluations],
         evidence=evidence, unknown_patterns=application.security_ir.unknown_patterns,
         recognized_patterns=application.security_ir.recognized_patterns,
         message=f"Explicit deterministic re-analysis completed for simulation {simulation_id}; this is the final simulated compliance result.",

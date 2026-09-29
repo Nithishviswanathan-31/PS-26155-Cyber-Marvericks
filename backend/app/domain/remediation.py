@@ -21,6 +21,11 @@ class RemediationDefinition(BaseModel):
     title: str = Field(min_length=1)
     description: str = Field(min_length=1)
     commands: list[str] = Field(min_length=1)
+    platform: str | None = None
+    finding: str | None = None
+    explanation: str | None = None
+    applicability_notes: str | None = None
+    remediation_steps: list[str] = Field(default_factory=list)
     target_properties: list[str] = Field(min_length=1)
     expected_state: dict[str, StrictBool] = Field(min_length=1)
     risk_level: RiskLevel

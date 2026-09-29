@@ -31,6 +31,9 @@ class DeterministicControlEngine:
                 evidence=[],
                 explanation="The control explicitly declares itself not applicable.",
                 remediation=dict(control.remediation),
+                severity=control.severity,
+                category=control.category,
+                framework_mappings=list(control.framework_mappings),
             )
 
         conditions = control.evaluation.conditions
@@ -170,6 +173,9 @@ class DeterministicControlEngine:
             evidence=evidence,
             explanation=explanation,
             remediation=dict(control.remediation),
+            severity=control.severity,
+            category=control.category,
+            framework_mappings=list(control.framework_mappings),
         )
 
     def evaluate_all(
@@ -225,6 +231,9 @@ class DeterministicControlEngine:
             evidence=evidence,
             explanation=explanation,
             remediation=dict(control.remediation),
+            severity=control.severity,
+            category=control.category,
+            framework_mappings=list(control.framework_mappings),
         )
 
 

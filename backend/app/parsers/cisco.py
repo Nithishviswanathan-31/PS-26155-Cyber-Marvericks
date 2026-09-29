@@ -27,6 +27,26 @@ class CiscoParser:
     _PASSWORD_DISABLED_RE = re.compile(r"^no\s+service\s+password-encryption\s*$", re.IGNORECASE)
     _NTP_ENABLED_RE = re.compile(r"^ntp\s+server\s+\S+", re.IGNORECASE)
     _NTP_DISABLED_RE = re.compile(r"^no\s+ntp\s+server\s+\S+", re.IGNORECASE)
+    _LICENSE_UDI_RE = re.compile(
+        r"^license\s+udi\s+pid\s+(?P<model>\S+)(?:\s+sn\s+(?P<serial>\S+))?\s*$",
+        re.IGNORECASE,
+    )
+    _LICENSE_UDI_SN_RE = re.compile(
+        r"^license\s+udi\s+sn\s+(?P<serial>\S+)\s*$",
+        re.IGNORECASE,
+    )
+    _MODEL_COMMENT_RE = re.compile(
+        r"^!\s*(?:Chassis(?: type)?|Model|PID|Hardware|Device Model|System Model)[:=\s]\s*(?P<model>\S+)\s*$",
+        re.IGNORECASE,
+    )
+    _SERIAL_COMMENT_RE = re.compile(
+        r"^!\s*(?:(?:System |Chassis )?Serial(?: Number)?|SN|Processor board ID)[:=\s]\s*(?P<serial>\S+)\s*$",
+        re.IGNORECASE,
+    )
+    _PLATFORM_COMMENT_RE = re.compile(
+        r"^!\s*Platform[:=\s]\s*(?P<platform>\S+)\s*$",
+        re.IGNORECASE,
+    )
 
     @classmethod
     def detect(cls, configuration_text: str) -> bool:
@@ -64,6 +84,9 @@ class CiscoParser:
         lines = configuration_text.splitlines()
         version: str | None = None
         hostname: str | None = None
+        device_model: str | None = None
+        serial_number: str | None = None
+        platform: str | None = None
         metadata_provenance: dict[str, SourceLocation] = {}
         in_vty_block = False
         observations: dict[str, list[_Observation]] = {}
@@ -94,6 +117,55 @@ class CiscoParser:
         for line_number, raw_line in enumerate(lines, start=1):
             stripped_line = raw_line.strip()
 
+            udi_match = cls._LICENSE_UDI_RE.match(stripped_line)
+            if udi_match:
+                device_model = udi_match.group("model")
+                metadata_provenance["device_model"] = SourceLocation(
+                    source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                )
+                if udi_match.group("serial"):
+                    serial_number = udi_match.group("serial")
+                    metadata_provenance["serial_number"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                continue
+
+            udi_sn_match = cls._LICENSE_UDI_SN_RE.match(stripped_line)
+            if udi_sn_match:
+                serial_number = udi_sn_match.group("serial")
+                metadata_provenance["serial_number"] = SourceLocation(
+                    source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                )
+                continue
+
+            if stripped_line.startswith("!"):
+                in_vty_block = False
+                model_comment_match = cls._MODEL_COMMENT_RE.match(stripped_line)
+                if model_comment_match:
+                    device_model = model_comment_match.group("model")
+                    metadata_provenance["device_model"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                    continue
+
+                serial_comment_match = cls._SERIAL_COMMENT_RE.match(stripped_line)
+                if serial_comment_match:
+                    serial_number = serial_comment_match.group("serial")
+                    metadata_provenance["serial_number"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                    continue
+
+                platform_comment_match = cls._PLATFORM_COMMENT_RE.match(stripped_line)
+                if platform_comment_match:
+                    platform = platform_comment_match.group("platform")
+                    metadata_provenance["platform"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                    continue
+
+                continue
+
             version_match = cls._VERSION_RE.match(stripped_line)
             if version_match:
                 version = version_match.group("version")
@@ -106,10 +178,6 @@ class CiscoParser:
 
             if cls._VTY_RE.match(stripped_line):
                 in_vty_block = True
-                continue
-
-            if stripped_line == "!":
-                in_vty_block = False
                 continue
 
             if in_vty_block:
@@ -184,6 +252,9 @@ class CiscoParser:
                 vendor=cls.vendor,
                 version=version,
                 hostname=hostname,
+                device_model=device_model,
+                serial_number=serial_number,
+                platform=platform,
                 metadata_provenance=metadata_provenance,
             ),
             normalized_properties=normalized_properties,

@@ -129,6 +129,9 @@ def reanalyze_configuration(analysis_id: str, request: Request) -> AnalysisRespo
                 expected=evaluation.expected,
                 actual=evaluation.actual,
                 explanation=evaluation.explanation,
+                severity=evaluation.severity,
+                category=evaluation.category,
+                framework_mappings=evaluation.framework_mappings,
             )
             for evaluation in evaluations
         ],

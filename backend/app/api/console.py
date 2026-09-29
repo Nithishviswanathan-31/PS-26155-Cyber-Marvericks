@@ -1,5 +1,12 @@
 from fastapi import APIRouter, Query
-from ..storage.database import console_analyses, console_batches, console_configurations, console_devices, list_knowledge
+from ..storage.database import (
+    console_analyses,
+    console_batches,
+    console_configurations,
+    console_devices,
+    get_all_interpretation_proposals,
+    list_knowledge,
+)
 
 router=APIRouter(prefix="/api", tags=["auditor console"])
 def page(items,total,offset,limit): return {"items":items,"total":total,"offset":offset,"limit":limit}
@@ -22,7 +29,9 @@ def findings(vendor:str|None=None,status:str|None=None,device_id:str|None=None,c
 @router.get("/dashboard/summary")
 def summary():
     analyses,total=console_analyses(limit=10000); devices,device_total=console_devices(limit=10000); configs,config_total=console_configurations(limit=10000); batches,batch_total=console_batches(limit=10000); roots=[a for a in analyses]
-    return {"total_devices":device_total,"total_configurations":config_total,"total_analyses":total,"batch_analyses":batch_total,"pass_findings":sum(a["pass_findings"] for a in roots),"fail_findings":sum(a["fail_findings"] for a in roots),"unknown_findings":sum(a["unknown_findings"] for a in roots),"recent_analyses":analyses[:10],"recent_unknown_patterns":[p for a in analyses for p in a["unknown_patterns"]][:10],"pending_ai_reviews":0,"active_knowledge_entries":len(list_knowledge(status="ACTIVE"))}
+    pending_proposals = [p for p in get_all_interpretation_proposals() if p.status in {"NEEDS_REVIEW", "PROPOSED"}]
+    return {"total_devices":device_total,"total_configurations":config_total,"total_analyses":total,"batch_analyses":batch_total,"pass_findings":sum(a["pass_findings"] for a in roots),"fail_findings":sum(a["fail_findings"] for a in roots),"unknown_findings":sum(a["unknown_findings"] for a in roots),"recent_analyses":analyses[:10],"recent_unknown_patterns":[p for a in analyses for p in a["unknown_patterns"]][:10],"pending_ai_reviews":len(pending_proposals),"active_knowledge_entries":len(list_knowledge(status="ACTIVE"))}
 @router.get("/knowledge/review-queue")
 def knowledge_review_queue():
-    return {"pending_proposals":[],"conflicts":[],"deactivated_knowledge":list_knowledge(status="DEACTIVATED"),"active_knowledge":list_knowledge(status="ACTIVE")}
+    pending = [p.model_dump(mode="json") for p in get_all_interpretation_proposals() if p.status in {"NEEDS_REVIEW", "PROPOSED"}]
+    return {"pending_proposals":pending,"conflicts":[],"deactivated_knowledge":list_knowledge(status="DEACTIVATED"),"active_knowledge":list_knowledge(status="ACTIVE")}

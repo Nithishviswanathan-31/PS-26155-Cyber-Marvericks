@@ -5,7 +5,37 @@ controls:
     severity: HIGH
     enabled: true
     applicable_vendors: [cisco_iosxe, fortigate_fortios, paloalto_panos]
-    framework_mappings: []
+    framework_mappings:
+      - framework_name: CIS
+        framework_version: v8
+        reference_id: "4.2"
+        title: Establish and Maintain a Secure Configuration Process for Network Infrastructure
+        description: Establish and maintain a secure configuration process for network infrastructure devices.
+        mapping_status: VERIFIED
+      - framework_name: NIST_SP_800_53
+        framework_version: Rev. 5
+        reference_id: AC-17
+        title: Remote Access
+        description: Authorizes, monitors, and controls all remote connections to information systems.
+        mapping_status: VERIFIED
+      - framework_name: NIST_SP_800_53
+        framework_version: Rev. 5
+        reference_id: SC-8
+        title: Transmission Confidentiality and Integrity
+        description: Protects the confidentiality and integrity of transmitted information using encrypted transport.
+        mapping_status: VERIFIED
+      - framework_name: DISA_STIG
+        framework_version: Network Device STIG
+        reference_id: STIG-NET-MGT-001-PROTO
+        title: Network Infrastructure Management Security (Prototype)
+        description: Prototype mapping for network device administrative management session security and cleartext prohibition.
+        mapping_status: PROTOTYPE
+      - framework_name: ISO_27001
+        framework_version: "2022"
+        reference_id: A.8.20
+        title: Networks Security
+        description: Networks and network devices shall be secured, managed and controlled to protect information in systems and applications.
+        mapping_status: VERIFIED
     evidence_requirements:
       include_paths: [management.ssh_enabled, management.telnet_enabled]
     remediation_reference:
@@ -39,7 +69,31 @@ controls:
     severity: MEDIUM
     enabled: true
     applicable_vendors: [cisco_iosxe, fortigate_fortios, paloalto_panos]
-    framework_mappings: []
+    framework_mappings:
+      - framework_name: CIS
+        framework_version: v8
+        reference_id: "8.2"
+        title: Collect Audit Logs
+        description: Collect audit logs to ensure that events are recorded for security monitoring and incident response.
+        mapping_status: VERIFIED
+      - framework_name: NIST_SP_800_53
+        framework_version: Rev. 5
+        reference_id: AU-12
+        title: Audit Record Generation
+        description: The system generates audit records for security-relevant events defined by the organization.
+        mapping_status: VERIFIED
+      - framework_name: DISA_STIG
+        framework_version: Network Device STIG
+        reference_id: STIG-NET-AUDIT-001-PROTO
+        title: Network Audit Log Generation (Prototype)
+        description: Prototype mapping requiring network devices to generate audit records for system events and administrative actions.
+        mapping_status: PROTOTYPE
+      - framework_name: ISO_27001
+        framework_version: "2022"
+        reference_id: A.8.15
+        title: Logging
+        description: Logs that record activities, exceptions, faults and other relevant events shall be produced, stored, protected and analysed.
+        mapping_status: VERIFIED
     evidence_requirements:
       include_paths: [logging.enabled]
     remediation_reference:
@@ -69,7 +123,31 @@ controls:
     severity: HIGH
     enabled: true
     applicable_vendors: [cisco_iosxe, fortigate_fortios, paloalto_panos]
-    framework_mappings: []
+    framework_mappings:
+      - framework_name: CIS
+        framework_version: v8
+        reference_id: "5.2"
+        title: Use Unique Passwords
+        description: Use unique passwords for all systems and protect stored credential secrets from disclosure.
+        mapping_status: VERIFIED
+      - framework_name: NIST_SP_800_53
+        framework_version: Rev. 5
+        reference_id: IA-5
+        title: Authenticator Management
+        description: Manages system authenticators, ensuring passwords and secrets are encrypted or hashed at rest.
+        mapping_status: VERIFIED
+      - framework_name: DISA_STIG
+        framework_version: Network Device STIG
+        reference_id: STIG-NET-CRED-001-PROTO
+        title: Network Device Credential Protection (Prototype)
+        description: Prototype mapping requiring device authentication secrets to be protected using platform encryption mechanisms.
+        mapping_status: PROTOTYPE
+      - framework_name: ISO_27001
+        framework_version: "2022"
+        reference_id: A.5.17
+        title: Authentication Information
+        description: Allocation and management of authentication information shall be controlled, protecting stored passwords and credentials.
+        mapping_status: VERIFIED
     evidence_requirements:
       include_paths: [password_protection.enabled]
     remediation_reference:
@@ -99,7 +177,31 @@ controls:
     severity: MEDIUM
     enabled: true
     applicable_vendors: [cisco_iosxe, fortigate_fortios, paloalto_panos]
-    framework_mappings: []
+    framework_mappings:
+      - framework_name: CIS
+        framework_version: v8
+        reference_id: "8.4"
+        title: Standardize Time Synchronization
+        description: Standardize time synchronization across network devices to ensure accurate and correlated event logging.
+        mapping_status: VERIFIED
+      - framework_name: NIST_SP_800_53
+        framework_version: Rev. 5
+        reference_id: AU-8
+        title: Time Stamps
+        description: The system uses internal system clocks to generate reliable time stamps for audit records and synchronizes with authoritative sources.
+        mapping_status: VERIFIED
+      - framework_name: DISA_STIG
+        framework_version: Network Device STIG
+        reference_id: STIG-NET-TIME-001-PROTO
+        title: Network Time Synchronization (Prototype)
+        description: Prototype mapping requiring network devices to synchronize internal clocks with redundant authoritative NTP time sources.
+        mapping_status: PROTOTYPE
+      - framework_name: ISO_27001
+        framework_version: "2022"
+        reference_id: A.8.17
+        title: Clock Synchronization
+        description: The clocks of information processing systems within the organization shall be synchronized to approved time sources.
+        mapping_status: VERIFIED
     evidence_requirements:
       include_paths: [time_sync.ntp_enabled]
     remediation_reference:
@@ -131,7 +233,31 @@ controls:
     severity: HIGH
     enabled: true
     applicable_vendors: [cisco_iosxe, fortigate_fortios, paloalto_panos]
-    framework_mappings: []
+    framework_mappings:
+      - framework_name: CIS
+        framework_version: v8
+        reference_id: "4.2"
+        title: Establish and Maintain a Secure Configuration Process for Network Infrastructure
+        description: Ensure network devices maintain secure management configurations by enabling SSH for administrative access.
+        mapping_status: VERIFIED
+      - framework_name: NIST_SP_800_53
+        framework_version: Rev. 5
+        reference_id: AC-17
+        title: Remote Access
+        description: Enforces remote access control via cryptographic management protocols (SSH).
+        mapping_status: VERIFIED
+      - framework_name: DISA_STIG
+        framework_version: Network Device STIG
+        reference_id: STIG-NET-SSH-001-PROTO
+        title: Network Device SSH Access (Prototype)
+        description: Prototype diagnostic verification of secure encrypted shell configuration.
+        mapping_status: PROTOTYPE
+      - framework_name: ISO_27001
+        framework_version: "2022"
+        reference_id: A.8.20
+        title: Networks Security
+        description: Network devices are configured to only allow secure encrypted management protocols.
+        mapping_status: VERIFIED
     expected_value: SSH management enabled
     evaluation:
       type: equals
@@ -153,7 +279,31 @@ controls:
     severity: HIGH
     enabled: true
     applicable_vendors: [cisco_iosxe, fortigate_fortios, paloalto_panos]
-    framework_mappings: []
+    framework_mappings:
+      - framework_name: CIS
+        framework_version: v8
+        reference_id: "4.2"
+        title: Establish and Maintain a Secure Configuration Process for Network Infrastructure
+        description: Ensure network devices disable insecure protocols including plaintext Telnet.
+        mapping_status: VERIFIED
+      - framework_name: NIST_SP_800_53
+        framework_version: Rev. 5
+        reference_id: SC-8
+        title: Transmission Confidentiality and Integrity
+        description: Prohibits cleartext transmission of credentials and management traffic by disabling Telnet.
+        mapping_status: VERIFIED
+      - framework_name: DISA_STIG
+        framework_version: Network Device STIG
+        reference_id: STIG-NET-TELNET-001-PROTO
+        title: Network Device Telnet Prohibition (Prototype)
+        description: Prototype diagnostic verification that unencrypted Telnet service is disabled.
+        mapping_status: PROTOTYPE
+      - framework_name: ISO_27001
+        framework_version: "2022"
+        reference_id: A.8.20
+        title: Networks Security
+        description: Prohibits insecure protocols and plaintext remote management services across network components.
+        mapping_status: VERIFIED
     expected_value: Telnet management disabled
     evaluation:
       type: equals

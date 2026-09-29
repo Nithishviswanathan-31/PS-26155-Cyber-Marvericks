@@ -29,6 +29,14 @@ class FortiGateParser:
         r"^(?:#(?:config-version|buildno|global_vdom)|config\s+(?:system\s+global|system\s+interface|system\s+ntp|log\b))",
         re.IGNORECASE,
     )
+    _SERIAL_HEADER_RE = re.compile(
+        r"^#\s*(?:serial_number|serial-number|(?:System\s+)?Serial(?:\s+Number)?|SN)[:=\s]\s*(?P<serial>[A-Za-z0-9_-]+)\s*$",
+        re.IGNORECASE,
+    )
+    _MODEL_HEADER_RE = re.compile(
+        r"^#\s*(?:model|device-model|Model|Device Model|Chassis)[:=\s]\s*(?P<model>[A-Za-z0-9_-]+)\s*$",
+        re.IGNORECASE,
+    )
 
     _LOG_SECTIONS = {
         "log disk setting",
@@ -81,6 +89,8 @@ class FortiGateParser:
         version: str | None = None
         hostname: str | None = None
         platform: str | None = None
+        device_model: str | None = None
+        serial_number: str | None = None
         metadata_provenance: dict[str, SourceLocation] = {}
         observations: dict[str, list[_Observation]] = {}
         unknown_patterns: list[UnknownPattern] = []
@@ -117,10 +127,31 @@ class FortiGateParser:
             if version_match:
                 version = version_match.group("version")
                 metadata_provenance["software_version"] = SourceLocation(source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line)
-                product = re.match(r"^#config-version=([A-Za-z0-9_-]+)\s+v", stripped_line, re.IGNORECASE)
+                product = re.match(r"^#config-version=([A-Za-z][A-Za-z0-9_-]+?)(?:[-_\s]+v?\d|\s+v\b)", stripped_line, re.IGNORECASE)
                 if product:
-                    platform = product.group(1)
-                    metadata_provenance["platform"] = metadata_provenance["software_version"]
+                    candidate = product.group(1).strip()
+                    if not re.match(r"^v?\d", candidate, re.IGNORECASE) and candidate.lower() not in {"v", "build", "buildno", "global_vdom", "opmode", "vdom"}:
+                        platform = candidate
+                        metadata_provenance["platform"] = metadata_provenance["software_version"]
+                        if device_model is None:
+                            device_model = candidate
+                            metadata_provenance["device_model"] = metadata_provenance["software_version"]
+                continue
+
+            serial_header_match = cls._SERIAL_HEADER_RE.match(stripped_line)
+            if serial_header_match:
+                serial_number = serial_header_match.group("serial")
+                metadata_provenance["serial_number"] = SourceLocation(
+                    source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                )
+                continue
+
+            model_header_match = cls._MODEL_HEADER_RE.match(stripped_line)
+            if model_header_match:
+                device_model = model_header_match.group("model")
+                metadata_provenance["device_model"] = SourceLocation(
+                    source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                )
                 continue
 
             if stripped_line.startswith("#") or stripped_line.startswith("!"):
@@ -143,6 +174,34 @@ class FortiGateParser:
 
             key = set_match.group("key").lower()
             value = set_match.group("value").strip()
+
+            if current_config == "system global" and key in {"serial-number", "serial_number"}:
+                try:
+                    serial_values = shlex.split(value)
+                except ValueError:
+                    serial_values = []
+                if len(serial_values) == 1 and serial_values[0].strip():
+                    serial_number = serial_values[0]
+                    metadata_provenance["serial_number"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                else:
+                    add_unknown(raw_line, line_number, "The FortiOS serial number value is malformed or ambiguous.")
+                continue
+
+            if current_config == "system global" and key in {"model", "device-model"}:
+                try:
+                    model_values = shlex.split(value)
+                except ValueError:
+                    model_values = []
+                if len(model_values) == 1 and model_values[0].strip():
+                    device_model = model_values[0]
+                    metadata_provenance["device_model"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                else:
+                    add_unknown(raw_line, line_number, "The FortiOS model value is malformed or ambiguous.")
+                continue
 
             if current_config == "system global" and key == "hostname":
                 try:
@@ -220,6 +279,8 @@ class FortiGateParser:
                 version=version,
                 hostname=hostname,
                 platform=platform,
+                device_model=device_model,
+                serial_number=serial_number,
                 metadata_provenance=metadata_provenance,
             ),
             normalized_properties=normalized_properties,

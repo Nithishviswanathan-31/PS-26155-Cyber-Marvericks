@@ -1,11 +1,386 @@
-import { useEffect,useState } from "react";
-import { Alert,Box,Button,Card,CardContent,Chip,CircularProgress,Stack,Table,TableBody,TableCell,TableHead,TableRow,TextField,Typography } from "@mui/material";
+import { useEffect, useState } from "react";
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Divider,
+  Paper,
+  Stack,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+  TextField,
+  Typography,
+} from "@mui/material";
 import { consoleGet, type ConsolePage } from "../api/console";
 
-export default function ConsolePage({title,path}:{title:string;path:string}){
- const [data,setData]=useState<ConsolePage|Record<string,unknown>|null>(null);const [q,setQ]=useState("");const [error,setError]=useState(false);const [offset,setOffset]=useState(0);
- useEffect(()=>{setData(null);setError(false);consoleGet(`${path}${path.includes("?")?"&":"?"}offset=${offset}&limit=25${q?`&q=${encodeURIComponent(q)}`:""}`).then(setData).catch(()=>setError(true));},[path,offset,q]);
- if(error)return <Alert severity="error">Unable to load persisted auditor data.</Alert>;if(!data)return <Box sx={{p:4,textAlign:"center"}}><CircularProgress/></Box>;
- const page="items" in data ? data as ConsolePage : null; const items=page?page.items:[]; const columns=items[0]?Object.keys(items[0]).filter(k=>!["results","evidence","unknown_patterns","metadata_provenance"].includes(k)).slice(0,10):[];
- return <Stack spacing={2}><Box><Typography variant="overline" color="secondary.main">PERSISTENT AUDITOR CONSOLE</Typography><Typography variant="h4">{title}</Typography></Box><TextField size="small" label="Search persisted records" value={q} onChange={e=>{setQ(e.target.value);setOffset(0)}}/><Card><CardContent>{!page?<pre>{JSON.stringify(data,null,2)}</pre>:items.length===0?<Typography color="text.secondary">No persisted records match this view.</Typography>:<><Table size="small"><TableHead><TableRow>{columns.map(c=><TableCell key={c}>{c.replaceAll("_"," ")}</TableCell>)}</TableRow></TableHead><TableBody>{items.map((item,i)=><TableRow key={String(item.analysis_id??item.device_id??item.configuration_id??item.batch_id??i)}>{columns.map(c=><TableCell key={c}>{typeof item[c]==="object"?<Chip size="small" label={JSON.stringify(item[c]).slice(0,56)}/>:String(item[c]??"—")}</TableCell>)}</TableRow>)}</TableBody></Table><Stack direction="row" justifyContent="space-between" sx={{mt:2}}><Typography variant="caption">{page.total} persisted records</Typography><Stack direction="row" spacing={1}><Button disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-25))}>Previous</Button><Button disabled={offset+page.limit>=page.total} onClick={()=>setOffset(offset+25)}>Next</Button></Stack></Stack></>}</CardContent></Card></Stack>;
+interface KnowledgeQueueData {
+  pending_proposals?: Array<{
+    proposal_id: string;
+    analysis_id: string;
+    pattern_id: string;
+    vendor: string;
+    pattern_signature: string;
+    candidate_property?: string;
+    candidate_value?: boolean;
+    candidate_mapping?: Record<string, boolean>;
+    confidence?: number;
+    status: string;
+    explanation?: string;
+  }>;
+  active_knowledge?: Array<{
+    knowledge_id: string;
+    version: number;
+    vendor: string;
+    target_property: string;
+    approved_mapping?: Record<string, boolean>;
+    reviewer_id?: string;
+    status: string;
+    created_at?: string;
+  }>;
+  deactivated_knowledge?: Array<{
+    knowledge_id: string;
+    version: number;
+    vendor: string;
+    target_property: string;
+    reviewer_id?: string;
+    status: string;
+  }>;
+  conflicts?: unknown[];
+}
+
+export default function ConsolePage({
+  title,
+  path,
+}: {
+  title: string;
+  path: string;
+}) {
+  const [data, setData] = useState<ConsolePage | Record<string, unknown> | null>(null);
+  const [q, setQ] = useState("");
+  const [error, setError] = useState(false);
+  const [offset, setOffset] = useState(0);
+
+  useEffect(() => {
+    setData(null);
+    setError(false);
+    consoleGet(
+      `${path}${path.includes("?") ? "&" : "?"}offset=${offset}&limit=25${
+        q ? `&q=${encodeURIComponent(q)}` : ""
+      }`
+    )
+      .then(setData)
+      .catch(() => setError(true));
+  }, [path, offset, q]);
+
+  if (error) {
+    return <Alert severity="error">Unable to load persisted auditor data.</Alert>;
+  }
+  if (!data) {
+    return (
+      <Box sx={{ p: 4, textAlign: "center" }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  // Specialized view for Knowledge Review Queue
+  if (title === "Knowledge Review Queue" || ("active_knowledge" in data || "pending_proposals" in data)) {
+    const kq = data as unknown as KnowledgeQueueData;
+    const pending = kq.pending_proposals ?? [];
+    const active = kq.active_knowledge ?? [];
+    const deactivated = kq.deactivated_knowledge ?? [];
+
+    return (
+      <Stack spacing={3}>
+        <Box>
+          <Typography variant="overline" color="secondary.main" letterSpacing={1.5}>
+            ADAPTIVE AI KNOWLEDGE BASE · HUMAN-IN-THE-LOOP REVIEW
+          </Typography>
+          <Typography variant="h4" sx={{ mt: 0.5 }}>
+            {title}
+          </Typography>
+          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+            Audit and govern candidate interpretations and versioned knowledge. AI proposes candidate mappings; human reviewers inspect, approve, correct, or reject them. Approved knowledge is versioned and applied only during explicit re-analysis.
+          </Typography>
+        </Box>
+
+        <Alert severity="info">
+          <strong>Core Governance Principle:</strong> AI proposals are candidate interpretations only and never establish compliance directly. Compliance evaluation remains 100% deterministic and evidence-backed.
+        </Alert>
+
+        {/* Section 1: Pending AI Interpretation Proposals */}
+        <Card variant="outlined">
+          <CardContent>
+            <Stack spacing={1.5}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Box>
+                  <Typography variant="h6">Pending AI Proposals Awaiting Human Review</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Candidate mappings generated by the controlled interpretation provider requiring reviewer approval.
+                  </Typography>
+                </Box>
+                <Chip
+                  label={`${pending.length} Pending`}
+                  color={pending.length > 0 ? "warning" : "default"}
+                  size="small"
+                />
+              </Stack>
+              <Divider />
+              {pending.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                  No pending AI proposals awaiting review. All candidate mappings have been resolved or none are queued.
+                </Typography>
+              ) : (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Proposal ID</TableCell>
+                      <TableCell>Vendor</TableCell>
+                      <TableCell>Target Candidate Mapping</TableCell>
+                      <TableCell>Confidence</TableCell>
+                      <TableCell>Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {pending.map((item) => (
+                      <TableRow key={item.proposal_id}>
+                        <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                          {item.proposal_id}
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={item.vendor} size="small" variant="outlined" />
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" sx={{ fontFamily: "monospace" }}>
+                            {JSON.stringify(item.candidate_mapping ?? {})}
+                          </Typography>
+                          {item.explanation && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              {item.explanation}
+                            </Typography>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          {item.confidence !== undefined
+                            ? `${(item.confidence * 100).toFixed(0)}%`
+                            : "—"}
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={item.status} size="small" color="warning" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </Stack>
+          </CardContent>
+        </Card>
+
+        {/* Section 2: Active Approved Knowledge Base */}
+        <Card variant="outlined">
+          <CardContent>
+            <Stack spacing={1.5}>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Box>
+                  <Typography variant="h6">Active Approved Knowledge Base (Versioned)</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Versioned semantic mappings authorized by human reviewers, available for mapping-aware re-analysis.
+                  </Typography>
+                </Box>
+                <Chip
+                  label={`${active.length} Active`}
+                  color={active.length > 0 ? "success" : "default"}
+                  size="small"
+                />
+              </Stack>
+              <Divider />
+              {active.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                  No active approved knowledge entries currently stored.
+                </Typography>
+              ) : (
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Knowledge ID</TableCell>
+                      <TableCell>Version</TableCell>
+                      <TableCell>Vendor</TableCell>
+                      <TableCell>Target Property</TableCell>
+                      <TableCell>Approved Mapping</TableCell>
+                      <TableCell>Reviewer</TableCell>
+                      <TableCell>Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {active.map((item) => (
+                      <TableRow key={`${item.knowledge_id}-v${item.version}`}>
+                        <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                          {item.knowledge_id}
+                        </TableCell>
+                        <TableCell>
+                          <Chip label={`v${item.version}`} size="small" color="primary" variant="outlined" />
+                        </TableCell>
+                        <TableCell>{item.vendor}</TableCell>
+                        <TableCell sx={{ fontFamily: "monospace" }}>{item.target_property}</TableCell>
+                        <TableCell sx={{ fontFamily: "monospace" }}>
+                          {JSON.stringify(item.approved_mapping ?? {})}
+                        </TableCell>
+                        <TableCell>{item.reviewer_id ?? "unknown"}</TableCell>
+                        <TableCell>
+                          <Chip label={item.status} size="small" color="success" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </Stack>
+          </CardContent>
+        </Card>
+
+        {/* Section 3: Deactivated Knowledge */}
+        {deactivated.length > 0 && (
+          <Card variant="outlined">
+            <CardContent>
+              <Stack spacing={1.5}>
+                <Typography variant="h6">Deactivated Knowledge History</Typography>
+                <Divider />
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Knowledge ID</TableCell>
+                      <TableCell>Version</TableCell>
+                      <TableCell>Vendor</TableCell>
+                      <TableCell>Target Property</TableCell>
+                      <TableCell>Reviewer</TableCell>
+                      <TableCell>Status</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {deactivated.map((item) => (
+                      <TableRow key={`${item.knowledge_id}-v${item.version}`}>
+                        <TableCell sx={{ fontFamily: "monospace", fontSize: "0.8rem" }}>
+                          {item.knowledge_id}
+                        </TableCell>
+                        <TableCell>v{item.version}</TableCell>
+                        <TableCell>{item.vendor}</TableCell>
+                        <TableCell sx={{ fontFamily: "monospace" }}>{item.target_property}</TableCell>
+                        <TableCell>{item.reviewer_id ?? "unknown"}</TableCell>
+                        <TableCell>
+                          <Chip label={item.status} size="small" />
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Stack>
+            </CardContent>
+          </Card>
+        )}
+      </Stack>
+    );
+  }
+
+  // Standard generic console view for Devices, Configurations, Analyses, Batches, etc.
+  const page = "items" in data ? (data as ConsolePage) : null;
+  const items = page ? page.items : [];
+  const columns = items[0]
+    ? Object.keys(items[0])
+        .filter(
+          (k) =>
+            !["results", "evidence", "unknown_patterns", "metadata_provenance"].includes(k)
+        )
+        .slice(0, 10)
+    : [];
+
+  return (
+    <Stack spacing={2}>
+      <Box>
+        <Typography variant="overline" color="secondary.main">
+          PERSISTENT AUDITOR CONSOLE
+        </Typography>
+        <Typography variant="h4">{title}</Typography>
+      </Box>
+      <TextField
+        size="small"
+        label="Search persisted records"
+        value={q}
+        onChange={(e) => {
+          setQ(e.target.value);
+          setOffset(0);
+        }}
+      />
+      <Card>
+        <CardContent>
+          {!page ? (
+            <pre>{JSON.stringify(data, null, 2)}</pre>
+          ) : items.length === 0 ? (
+            <Typography color="text.secondary">
+              No persisted records match this view.
+            </Typography>
+          ) : (
+            <>
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    {columns.map((c) => (
+                      <TableCell key={c}>{c.replaceAll("_", " ")}</TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {items.map((item, i) => (
+                    <TableRow
+                      key={String(
+                        item.analysis_id ??
+                          item.device_id ??
+                          item.configuration_id ??
+                          item.batch_id ??
+                          i
+                      )}
+                    >
+                      {columns.map((c) => (
+                        <TableCell key={c}>
+                          {typeof item[c] === "object" ? (
+                            <Chip size="small" label={JSON.stringify(item[c]).slice(0, 56)} />
+                          ) : (
+                            String(item[c] ?? "—")
+                          )}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+              <Stack direction="row" justifyContent="space-between" sx={{ mt: 2 }}>
+                <Typography variant="caption">{page.total} persisted records</Typography>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    disabled={!offset}
+                    onClick={() => setOffset(Math.max(0, offset - 25))}
+                  >
+                    Previous
+                  </Button>
+                  <Button
+                    disabled={offset + page.limit >= page.total}
+                    onClick={() => setOffset(offset + 25)}
+                  >
+                    Next
+                  </Button>
+                </Stack>
+              </Stack>
+            </>
+          )}
+        </CardContent>
+      </Card>
+    </Stack>
+  );
 }

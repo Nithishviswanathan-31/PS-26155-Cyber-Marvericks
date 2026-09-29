@@ -39,10 +39,8 @@ The existing AstraNet UNKNOWN and explicit mapping/re-analysis behavior remains.
 ## Framework and evidence metadata
 
 Each framework mapping has `framework_name`, optional `framework_version`,
-`reference_id`, and optional `title` and `description`. Required text must not
-be blank. All shipped mappings are empty: no official IDs or verified mappings
-are claimed. Schema validation checks structure, not authority or correctness
-of an external framework reference. Framework verification is future work.
+`reference_id`, optional `title` and `description`, and `mapping_status` (`VERIFIED`, `PROTOTYPE`, or `INTERNAL`). Required text must not
+be blank. Shipped catalogue controls contain verified cross-references for CIS Controls v8, NIST SP 800-53 Rev. 5, and ISO/IEC 27001:2022, and explicitly labelled prototype mappings for DISA STIG. Framework mappings are advisory cross-references only and do not participate in compliance evaluation. (See `docs/MULTI_FRAMEWORK_COMPLIANCE.md` for full details.)
 
 Evidence requirements use `include_paths` and `display_fields`. Paths must
 cover exactly the evaluation properties without duplicates and agree with

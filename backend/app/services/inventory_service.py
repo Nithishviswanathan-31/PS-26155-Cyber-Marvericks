@@ -11,12 +11,12 @@ def prepare_inventory(security_ir: SecurityIR, filename: str, fingerprint: str, 
     observed = security_ir.device
     if existing_device and existing_device.vendor != observed.vendor:
         raise ValueError("Selected device vendor does not match the parsed configuration.")
-    identity_parts = (observed.vendor, observed.hostname, observed.platform, observed.version, observed.serial_number)
+    identity_parts = (observed.vendor, observed.hostname, observed.platform, observed.version, observed.device_model, observed.serial_number)
     stable_key = "|".join(item or "" for item in identity_parts)
     stable_device_id = str(uuid5(NAMESPACE_URL, f"ps26155:device:{stable_key}")) if observed.hostname else str(uuid4())
     device = Device(
         device_id=existing_device.device_id if existing_device else stable_device_id, hostname=observed.hostname, vendor=observed.vendor,
-        platform=observed.platform, software_version=observed.version,
+        platform=observed.platform, software_version=observed.version, device_model=observed.device_model,
         serial_number=observed.serial_number,
         metadata={"identity_basis": "CONFIGURATION_OBSERVATION", "source_filename": filename},
         metadata_provenance=observed.metadata_provenance,

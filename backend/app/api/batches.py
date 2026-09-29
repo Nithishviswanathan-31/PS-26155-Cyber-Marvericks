@@ -32,14 +32,23 @@ def _compliance_status(results: list) -> str:
 
 
 def _summary(items: list[BatchItem]) -> BatchSummary:
+    vendors = sorted(list({item.vendor for item in items if item.vendor}))
+    devices = sorted(list({item.hostname or item.device_id for item in items if (item.hostname or item.device_id)}))
     return BatchSummary(
-        total=len(items), processed=sum(item.processing_status in {"COMPLETED", "FAILED", "DUPLICATE"} for item in items),
+        total=len(items),
+        processed=sum(item.processing_status in {"COMPLETED", "FAILED", "DUPLICATE"} for item in items),
         successful=sum(item.processing_status in {"COMPLETED", "DUPLICATE"} for item in items),
         failed=sum(item.processing_status == "FAILED" for item in items),
         duplicates=sum(item.processing_status == "DUPLICATE" for item in items),
         pass_analyses=sum(item.compliance_status == "PASS" for item in items),
         fail_analyses=sum(item.compliance_status == "FAIL" for item in items),
         unknown_analyses=sum(item.compliance_status == "UNKNOWN" for item in items),
+        vendors_detected=vendors,
+        devices_analyzed=devices,
+        pass_count=sum(item.pass_count for item in items),
+        fail_count=sum(item.fail_count for item in items),
+        unknown_count=sum(item.unknown_count for item in items),
+        not_applicable_count=sum(item.not_applicable_count for item in items),
     )
 
 
@@ -82,6 +91,15 @@ async def analyze_batch(request: Request, files: list[UploadFile] = File(...)) -
             item.duplicate_of_configuration_id = response.configuration.duplicate_of_configuration_id if response.configuration else None
             item.compliance_status = _compliance_status(response.results)
             item.processing_status = "DUPLICATE" if item.duplicate_of_configuration_id else "COMPLETED"
+            item.vendor = response.vendor
+            item.platform = response.device.platform
+            item.hostname = response.device.hostname
+            item.device_model = response.device.device_model
+            item.serial_number = response.device.serial_number
+            item.pass_count = sum(r.result == ComplianceResult.PASS for r in response.results)
+            item.fail_count = sum(r.result == ComplianceResult.FAIL for r in response.results)
+            item.unknown_count = sum(r.result == ComplianceResult.UNKNOWN for r in response.results)
+            item.not_applicable_count = sum(r.result == ComplianceResult.NOT_APPLICABLE for r in response.results)
         except ApiError as exc:
             item.processing_status = "FAILED"
             item.error_code, item.error_message = str(exc.code), exc.message

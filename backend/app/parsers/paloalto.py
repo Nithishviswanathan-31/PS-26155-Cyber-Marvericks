@@ -26,6 +26,26 @@ class PaloAltoParser:
         ("set", "shared", "log-settings"),
     )
     _SUPPORTED_ACCESS_PROTOCOLS = {"ssh", "telnet"}
+    _COMMENT_MODEL_RE = re.compile(
+        r"^#\s*(?:Chassis(?: type)?|Model|Device Model|PID|Hardware)[:=\s]\s*(?P<model>\S+)\s*$",
+        re.IGNORECASE,
+    )
+    _COMMENT_SERIAL_RE = re.compile(
+        r"^#\s*(?:(?:System )?Serial(?: Number)?|SN)[:=\s]\s*(?P<serial>\S+)\s*$",
+        re.IGNORECASE,
+    )
+    _COMMENT_VERSION_RE = re.compile(
+        r"^#\s*(?:(?:PAN-OS|Software)\s+)?Version[:=\s]\s*(?P<version>\S+)\s*$",
+        re.IGNORECASE,
+    )
+    _COMMENT_PLATFORM_RE = re.compile(
+        r"^#\s*Platform[:=\s]\s*(?P<platform>\S+)\s*$",
+        re.IGNORECASE,
+    )
+    _COMMENT_HOSTNAME_RE = re.compile(
+        r"^#\s*Hostname[:=\s]\s*(?P<hostname>\S+)\s*$",
+        re.IGNORECASE,
+    )
 
     @classmethod
     def detect(cls, configuration_text: str) -> bool:
@@ -64,6 +84,9 @@ class PaloAltoParser:
 
         version: str | None = None
         hostname: str | None = None
+        device_model: str | None = None
+        serial_number: str | None = None
+        platform: str | None = None
         metadata_provenance: dict[str, SourceLocation] = {}
         unknown_patterns: list[UnknownPattern] = []
         observations: dict[str, list[_Observation]] = {}
@@ -95,7 +118,50 @@ class PaloAltoParser:
 
         for line_number, raw_line in enumerate(configuration_text.splitlines(), start=1):
             stripped_line = raw_line.strip()
-            if not stripped_line or stripped_line.startswith("#"):
+            if not stripped_line:
+                continue
+
+            if stripped_line.startswith("#"):
+                model_match = cls._COMMENT_MODEL_RE.match(stripped_line)
+                if model_match:
+                    device_model = model_match.group("model")
+                    metadata_provenance["device_model"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                    continue
+
+                serial_match = cls._COMMENT_SERIAL_RE.match(stripped_line)
+                if serial_match:
+                    serial_number = serial_match.group("serial")
+                    metadata_provenance["serial_number"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                    continue
+
+                version_match = cls._COMMENT_VERSION_RE.match(stripped_line)
+                if version_match:
+                    version = version_match.group("version")
+                    metadata_provenance["software_version"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                    continue
+
+                platform_match = cls._COMMENT_PLATFORM_RE.match(stripped_line)
+                if platform_match:
+                    platform = platform_match.group("platform")
+                    metadata_provenance["platform"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                    continue
+
+                hostname_match = cls._COMMENT_HOSTNAME_RE.match(stripped_line)
+                if hostname_match:
+                    hostname = hostname_match.group("hostname")
+                    metadata_provenance["hostname"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                    continue
+
                 continue
 
             try:
@@ -122,6 +188,46 @@ class PaloAltoParser:
                     metadata_provenance["hostname"] = SourceLocation(source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line)
                 else:
                     add_unknown(raw_line, line_number, "The PAN-OS hostname statement is malformed or ambiguous.")
+                continue
+
+            if lowered[:4] in (["set", "deviceconfig", "system", "model"], ["set", "deviceconfig", "system", "device-model"]):
+                if len(tokens) == 5 and tokens[4].strip():
+                    device_model = tokens[4]
+                    metadata_provenance["device_model"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                else:
+                    add_unknown(raw_line, line_number, "The PAN-OS model statement is malformed or ambiguous.")
+                continue
+
+            if lowered[:4] in (["set", "deviceconfig", "system", "serial"], ["set", "deviceconfig", "system", "serial-number"]):
+                if len(tokens) == 5 and tokens[4].strip():
+                    serial_number = tokens[4]
+                    metadata_provenance["serial_number"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                else:
+                    add_unknown(raw_line, line_number, "The PAN-OS serial statement is malformed or ambiguous.")
+                continue
+
+            if lowered[:4] in (["set", "deviceconfig", "system", "version"], ["set", "deviceconfig", "system", "sw-version"]):
+                if len(tokens) == 5 and tokens[4].strip():
+                    version = tokens[4]
+                    metadata_provenance["software_version"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                else:
+                    add_unknown(raw_line, line_number, "The PAN-OS version statement is malformed or ambiguous.")
+                continue
+
+            if lowered[:4] == ["set", "deviceconfig", "system", "platform"]:
+                if len(tokens) == 5 and tokens[4].strip():
+                    platform = tokens[4]
+                    metadata_provenance["platform"] = SourceLocation(
+                        source_file=source_file, line_start=line_number, line_end=line_number, raw_excerpt=raw_line
+                    )
+                else:
+                    add_unknown(raw_line, line_number, "The PAN-OS platform statement is malformed or ambiguous.")
                 continue
 
             if lowered[:4] == ["set", "network", "profiles", "interface-management-profile"]:
@@ -219,6 +325,9 @@ class PaloAltoParser:
                 vendor=cls.vendor,
                 version=version,
                 hostname=hostname,
+                device_model=device_model,
+                serial_number=serial_number,
+                platform=platform,
                 metadata_provenance=metadata_provenance,
             ),
             normalized_properties=normalized_properties,

@@ -443,6 +443,18 @@ def get_interpretation_proposals(analysis_id: str, database_path: Path = DATABAS
         connection.close()
 
 
+def get_all_interpretation_proposals(status: str | None = None, database_path: Path = DATABASE_PATH) -> list[AIProposal]:
+    connection = get_connection(database_path)
+    try:
+        rows = connection.execute("SELECT record_json FROM interpretation_proposals ORDER BY rowid DESC").fetchall()
+        proposals = [AIProposal.model_validate_json(row["record_json"]) for row in rows]
+        if status:
+            return [p for p in proposals if p.status == status]
+        return proposals
+    finally:
+        connection.close()
+
+
 def get_interpretation_proposal(proposal_id: str, database_path: Path = DATABASE_PATH) -> AIProposal | None:
     connection = get_connection(database_path)
     try:

@@ -67,6 +67,7 @@ def analyze_configuration_bytes(content: bytes, filename: str, device_id: str | 
             control_id=e.control_id, control_name=e.control_name,
             diagnostic_of=next(c.diagnostic_of for c in controls if c.control_id == e.control_id),
             result=e.result, expected=e.expected, actual=e.actual, explanation=e.explanation,
+            severity=e.severity, category=e.category, framework_mappings=e.framework_mappings,
         ) for e in evaluations],
         evidence=[item for e in evaluations for item in build_evidence(security_ir, e)],
         unknown_patterns=security_ir.unknown_patterns,

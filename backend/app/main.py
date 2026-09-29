@@ -18,6 +18,7 @@ from .api.reanalyze import router as reanalyze_router
 from .api.remediation import router as remediation_router
 from .api.reports import router as reports_router
 from .api.integrity import router as integrity_router
+from .api.frameworks import router as frameworks_router
 from .config import load_demo_controls, CatalogueError
 from .domain.api_errors import ApiError, ApiErrorCode, error_payload
 from .domain.schemas import HealthResponse
@@ -56,7 +57,7 @@ app.add_middleware(
 
 for audit_router in (analyze_router, batches_router, interpretations_router, inventory_router,
                      console_router, knowledge_router, demo_router, mappings_router,
-                     reanalyze_router, remediation_router, reports_router):
+                     reanalyze_router, remediation_router, reports_router, frameworks_router):
     app.include_router(audit_router, dependencies=[Depends(authorize_route)])
 app.include_router(integrity_router, dependencies=[Depends(authorize_route)])
 app.include_router(auth_router)

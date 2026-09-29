@@ -79,7 +79,16 @@ def generate_pdf_report(analysis_id: str, request: Request) -> Response:
          "simulation_id": simulation.simulation_id if simulation else None},
         actor_id=getattr(request.state, "actor", {}).get("user_id"),
     )
-    integrity = {"status": analysis_integrity["status"], "analysis_hash": analysis_record["content_hash"] if analysis_record else None, "ledger_record_id": report_record["integrity_record_id"]}
+    integrity = {
+        "status": analysis_integrity["status"],
+        "artifact_type": "REPORT",
+        "artifact_id": report_id,
+        "analysis_id": analysis_id,
+        "analysis_hash": analysis_record["content_hash"] if analysis_record else None,
+        "report_hash": report_record.get("record_hash"),
+        "previous_hash": report_record.get("previous_hash"),
+        "ledger_record_id": report_record["integrity_record_id"],
+    }
     report_metadata = save_report_metadata(report_id=report_id, analysis_id=analysis_id, generated_by=getattr(request.state, "actor", {}).get("user_id"), integrity_record_id=report_record["integrity_record_id"], metadata={"analysis_hash": integrity["analysis_hash"], "integrity_status": integrity["status"], "mapping_id": analysis.mapping_id, "mapping_version": analysis.mapping_version, "simulation_id": simulation.simulation_id if simulation else None})
     integrity["report_version"] = report_metadata["report_version"]
     try:

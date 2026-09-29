@@ -55,11 +55,11 @@ def test_schema_accepts_existing_vendor_identifiers(vendor):
     assert definition(applicable_vendors=[vendor]).applicable_vendors == [vendor]
 
 
-def test_framework_structure_and_empty_mappings():
+def test_framework_structure_and_catalogue_mappings():
     mapping = FrameworkMapping(framework_name="Synthetic test framework", framework_version="test",
                                reference_id="TEST-ONLY", title="Example", description="Test data, not official")
     assert definition(framework_mappings=[mapping]).framework_mappings == [mapping]
-    assert all(control.framework_mappings == [] for control in CONTROLS)
+    assert all(isinstance(control.framework_mappings, list) and len(control.framework_mappings) > 0 for control in CONTROLS)
 
 
 def test_evidence_contract_and_remediation_references():

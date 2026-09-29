@@ -47,6 +47,9 @@ ControlVendor = Literal["cisco_iosxe", "fortigate_fortios", "paloalto_panos", "a
 NonBlankText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
+FrameworkMappingStatus = Literal["VERIFIED", "PROTOTYPE", "INTERNAL"]
+
+
 class FrameworkMapping(BaseModel):
     """Informational reference; presence does not verify an official mapping."""
 
@@ -57,6 +60,7 @@ class FrameworkMapping(BaseModel):
     reference_id: NonBlankText
     title: NonBlankText | None = None
     description: NonBlankText | None = None
+    mapping_status: FrameworkMappingStatus = "VERIFIED"
 
 
 class EvidenceRequirements(BaseModel):
@@ -120,6 +124,23 @@ class ControlEvaluationResult(BaseModel):
     evidence: list[EvidenceRecord] = Field(default_factory=list)
     explanation: str
     remediation: dict[str, str] = Field(default_factory=dict)
+    severity: ControlSeverity | None = None
+    category: ControlCategory | None = None
+    framework_mappings: list[FrameworkMapping] = Field(default_factory=list)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, ControlEvaluationResult):
+            return False
+        return (
+            self.control_id == other.control_id
+            and self.control_name == other.control_name
+            and self.result == other.result
+            and self.expected == other.expected
+            and self.actual == other.actual
+            and self.evidence == other.evidence
+            and self.explanation == other.explanation
+            and self.remediation == other.remediation
+        )
 
 
 # Backward-compatible P0.3 import name.
@@ -159,6 +180,9 @@ class ControlResultSummary(BaseModel):
     actual: Any
     explanation: str
     diagnostic_of: str | None = None
+    severity: ControlSeverity | None = None
+    category: ControlCategory | None = None
+    framework_mappings: list[FrameworkMapping] = Field(default_factory=list)
 
 
 class AnalysisResponse(BaseModel):
