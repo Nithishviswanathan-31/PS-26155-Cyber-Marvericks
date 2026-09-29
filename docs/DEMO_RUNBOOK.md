@@ -1,6 +1,6 @@
-# PS 26155 Emergency Demo Runbook
+# PS 26155 Demo Runbook
 
-This runbook is for the internal hackathon MVP. All configuration files are
+This runbook covers the SIH Final Submission prototype (branch: `sih-final-submission`). All configuration files are
 checked-in DEMO / SYNTHETIC DATA. No production device is contacted or
 modified.
 
@@ -23,7 +23,7 @@ python -m backend.scripts.seed_demo
 
 ## Demo A — compliance and simulation
 
-1. Open **Analyze Configuration**.
+1. Open **Single Device Audit** in the navigation.
 2. Select `configs/cisco/noncompliant.conf`.
 3. Analyze and open the `CTRL-001` FAIL evidence.
 4. View the deterministic remediation recommendation.
