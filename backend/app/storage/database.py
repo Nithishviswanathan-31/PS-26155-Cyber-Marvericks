@@ -446,7 +446,12 @@ def get_interpretation_proposals(analysis_id: str, database_path: Path = DATABAS
 def get_all_interpretation_proposals(status: str | None = None, database_path: Path = DATABASE_PATH) -> list[AIProposal]:
     connection = get_connection(database_path)
     try:
-        rows = connection.execute("SELECT record_json FROM interpretation_proposals ORDER BY rowid DESC").fetchall()
+        rows = connection.execute("""
+            SELECT p.record_json
+            FROM interpretation_proposals p
+            JOIN analysis_results a ON p.analysis_id = a.analysis_id
+            ORDER BY p.rowid DESC
+        """).fetchall()
         proposals = [AIProposal.model_validate_json(row["record_json"]) for row in rows]
         if status:
             return [p for p in proposals if p.status == status]
@@ -828,14 +833,21 @@ def get_latest_simulation_for_analysis(
 def get_unknown_pattern_context(
     pattern_id: str,
     database_path: Path = DATABASE_PATH,
+    analysis_id: str | None = None,
 ) -> dict[str, Any] | None:
     """Find a persisted unknown pattern and its vendor without storing raw config."""
 
     connection = get_connection(database_path)
     try:
-        rows = connection.execute(
-            "SELECT response_json, vendor FROM analysis_results ORDER BY created_at DESC"
-        ).fetchall()
+        if analysis_id:
+            rows = connection.execute(
+                "SELECT response_json, vendor FROM analysis_results WHERE analysis_id = ?",
+                (analysis_id,),
+            ).fetchall()
+        else:
+            rows = connection.execute(
+                "SELECT response_json, vendor FROM analysis_results ORDER BY created_at DESC"
+            ).fetchall()
         from ..domain.mapping import pattern_signature, normalized_context
         from ..domain.security_ir import UnknownPattern
         found = None

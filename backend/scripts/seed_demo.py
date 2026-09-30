@@ -18,7 +18,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.config import is_demo_reset_enabled
 from backend.app.main import app
-from backend.app.storage.database import reset_demo_database
+from backend.app.storage.database import reset_demo_database, get_analysis_bundle, get_batch_items
 
 
 def _upload(client: TestClient, relative_path: str) -> dict:
@@ -65,6 +65,7 @@ def main() -> None:
             json={
                 "reviewer_id": "demo-seed-reviewer",
                 "semantic_mapping": suggestion.json()["semantic_mapping"],
+                "proposal_id": suggestion.json().get("proposal_id"),
             },
         )
         approval.raise_for_status()
@@ -85,6 +86,18 @@ def main() -> None:
         batch_response = client.post("/api/batches/analyze", files=fleet_files)
         batch_response.raise_for_status()
         batch_data = batch_response.json()
+
+        # Seed 1 clean pending proposal for fleet AstraNet unknown pattern for live review demo
+        fleet_items = get_batch_items(batch_data["batch_id"]) or []
+        fleet_astranet_item = next(
+            (item for item in fleet_items if item.vendor == "astranet"),
+            None,
+        )
+        if fleet_astranet_item and fleet_astranet_item.analysis_id:
+            fleet_astranet_bundle = get_analysis_bundle(fleet_astranet_item.analysis_id)
+            if fleet_astranet_bundle and fleet_astranet_bundle["response"].get("unknown_patterns"):
+                fleet_pat_id = fleet_astranet_bundle["response"]["unknown_patterns"][0]["pattern_id"]
+                client.post(f"/api/mappings/{fleet_pat_id}/suggest")
 
     print(json.dumps({
         "status": "seeded",

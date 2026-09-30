@@ -28,6 +28,7 @@ from ..storage.database import (
     save_interpretation_proposal,
     find_approved_mapping_references,
     find_knowledge,
+    get_analysis_bundle,
 )
 from datetime import datetime, timezone
 
@@ -42,7 +43,27 @@ def save_mapping_version(**values):
         raise ApiError(status.HTTP_409_CONFLICT, ApiErrorCode.INVALID_MAPPING, str(exc)) from exc
 
 
-def _get_pattern_context(pattern_id: str) -> tuple[str, UnknownPattern, str]:
+def _get_pattern_context(pattern_id: str, proposal_id: str | None = None) -> tuple[str, UnknownPattern, str]:
+    if proposal_id:
+        proposal = get_interpretation_proposal(proposal_id)
+        if proposal is None:
+            raise ApiError(status.HTTP_404_NOT_FOUND, ApiErrorCode.UNKNOWN_PATTERN, "Interpretation proposal was not found.")
+        if proposal.pattern_id != pattern_id:
+            raise ApiError(status.HTTP_409_CONFLICT, ApiErrorCode.INVALID_MAPPING, "Interpretation proposal identity does not match the mapping target.")
+        bundle = get_analysis_bundle(proposal.analysis_id)
+        if bundle is None:
+            raise ApiError(status.HTTP_404_NOT_FOUND, ApiErrorCode.UNKNOWN_PATTERN, "Unknown pattern was not found in a persisted analysis.")
+        response = bundle["response"]
+        matching = next((p for p in response.get("unknown_patterns", []) if p.get("pattern_id") == pattern_id), None)
+        if matching is None:
+            raise ApiError(status.HTTP_404_NOT_FOUND, ApiErrorCode.UNKNOWN_PATTERN, "Unknown pattern was not found in a persisted analysis.")
+        if proposal.vendor != response.get("vendor"):
+            raise ApiError(status.HTTP_409_CONFLICT, ApiErrorCode.INVALID_MAPPING, "Interpretation proposal vendor does not match the source analysis.")
+        try:
+            return str(response["vendor"]), UnknownPattern.model_validate(matching), str(proposal.analysis_id)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ApiError(status.HTTP_500_INTERNAL_SERVER_ERROR, ApiErrorCode.INTERNAL_ERROR, "The stored unknown pattern could not be loaded safely.") from exc
+
     try:
         context = get_unknown_pattern_context(pattern_id)
     except ValueError as exc:
@@ -105,7 +126,7 @@ def _save_decision(
     reason: str | None = None,
     proposal_id: str | None = None,
 ) -> MappingDecisionResponse:
-    vendor, pattern, source_analysis_id = _get_pattern_context(pattern_id)
+    vendor, pattern, source_analysis_id = _get_pattern_context(pattern_id, proposal_id=proposal_id)
     proposal = get_interpretation_proposal(proposal_id) if proposal_id else None
     if proposal_id and (proposal is None or proposal.pattern_id != pattern_id or proposal.vendor != vendor or proposal.analysis_id != source_analysis_id):
         raise ApiError(status.HTTP_409_CONFLICT, ApiErrorCode.INVALID_MAPPING, "Interpretation proposal identity does not match the mapping target.")

@@ -18,6 +18,8 @@ def isolate_simulation_records() -> None:
     connection = get_connection()
     try:
         connection.execute("DELETE FROM simulation_results")
+        connection.execute("DELETE FROM interpretation_events")
+        connection.execute("DELETE FROM interpretation_proposals")
         connection.execute("DELETE FROM analysis_results")
         connection.commit()
     finally:
