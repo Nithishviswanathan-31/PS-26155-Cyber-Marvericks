@@ -26,7 +26,7 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { CheckCircle, Edit, Cancel, Block, PictureAsPdf, Visibility } from "@mui/icons-material";
+import { CheckCircle, Edit, Cancel, Block, PictureAsPdf, Visibility, Refresh } from "@mui/icons-material";
 import { consoleGet, type ConsolePage as ConsolePageType } from "../api/console";
 import { generatePdfReport, downloadPdf } from "../api/reports";
 import {
@@ -442,16 +442,27 @@ export default function ConsolePage({
           message={notification}
         />
 
-        <Box>
-          <Typography variant="overline" color="secondary.main" letterSpacing={1.5}>
-            ADAPTIVE AI KNOWLEDGE BASE · HUMAN-IN-THE-LOOP REVIEW
-          </Typography>
-          <Typography variant="h4" sx={{ mt: 0.5 }}>
-            {title}
-          </Typography>
-          <Typography color="text.secondary" sx={{ mt: 0.5 }}>
-            Audit and govern candidate interpretations and versioned knowledge. AI proposes candidate mappings; human reviewers inspect, approve, correct, or reject them. Approved knowledge is versioned and applied only during explicit re-analysis.
-          </Typography>
+        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+          <Box>
+            <Typography variant="overline" color="secondary.main" letterSpacing={1.5}>
+              ADAPTIVE AI KNOWLEDGE BASE · HUMAN-IN-THE-LOOP REVIEW
+            </Typography>
+            <Typography variant="h4" sx={{ mt: 0.5 }}>
+              {title}
+            </Typography>
+            <Typography color="text.secondary" sx={{ mt: 0.5 }}>
+              Audit and govern candidate interpretations and versioned knowledge. AI proposes candidate mappings; human reviewers inspect, approve, correct, or reject them. Approved knowledge is versioned and applied only during explicit re-analysis.
+            </Typography>
+          </Box>
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<Refresh />}
+            onClick={load}
+            sx={{ mt: 1, whiteSpace: "nowrap" }}
+          >
+            Refresh Queue
+          </Button>
         </Box>
 
         <Alert severity="info">
@@ -757,11 +768,16 @@ export default function ConsolePage({
 
   return (
     <Stack spacing={2}>
-      <Box>
-        <Typography variant="overline" color="secondary.main">
-          PERSISTENT AUDITOR CONSOLE
-        </Typography>
-        <Typography variant="h4">{title}</Typography>
+      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <Box>
+          <Typography variant="overline" color="secondary.main">
+            PERSISTENT AUDITOR CONSOLE
+          </Typography>
+          <Typography variant="h4">{title}</Typography>
+        </Box>
+        <Button variant="outlined" size="small" startIcon={<Refresh />} onClick={load} sx={{ mt: 1 }}>
+          Refresh
+        </Button>
       </Box>
       <TextField
         size="small"

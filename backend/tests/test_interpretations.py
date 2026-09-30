@@ -94,7 +94,9 @@ def test_proposals_are_isolated_by_analysis_identity(client):
     first_pid = first["unknown_patterns"][0]["pattern_id"]
     second_pid = second["unknown_patterns"][0]["pattern_id"]
     first_proposal = client.post(f"/api/interpretations/{first['analysis_id']}", json={"pattern_id": first_pid}).json()["proposals"][0]
-    assert client.get(f"/api/interpretations/{second['analysis_id']}").json()["proposals"] == []
+    second_proposals = client.get(f"/api/interpretations/{second['analysis_id']}").json()["proposals"]
+    assert not any(p["analysis_id"] == first["analysis_id"] for p in second_proposals)
+    assert not any(p["proposal_id"] == first_proposal["proposal_id"] for p in second_proposals)
     assert first_proposal["analysis_id"] == first["analysis_id"]
     assert first_proposal["pattern_id"] != second_pid
 

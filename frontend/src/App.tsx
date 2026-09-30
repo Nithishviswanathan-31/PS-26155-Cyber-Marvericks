@@ -39,6 +39,7 @@ export default function App() {
 
   const handleAnalysisCompleted = (analysis: AnalysisResponse) => {
     setAnalyses((current) => [...current, analysis]);
+    setInspectAnalysisId(analysis.analysis_id);
   };
 
   const handleInspectAnalysis = (analysisId: string) => {
@@ -115,7 +116,12 @@ export default function App() {
             <ListItemButton
               key={item.label}
               selected={activeView === item.view || (item.view === "single-audit" && activeView === "analyze")}
-              onClick={() => setActiveView(item.view)}
+              onClick={() => {
+                if (item.view === "single-audit") {
+                  setInspectAnalysisId(null);
+                }
+                setActiveView(item.view);
+              }}
               sx={{ borderRadius: 2, mb: 0.5 }}
             >
               <Box sx={{ display: "flex", mr: 1.25, color: (activeView === item.view || (item.view === "single-audit" && activeView === "analyze")) ? "primary.main" : "text.secondary" }}>

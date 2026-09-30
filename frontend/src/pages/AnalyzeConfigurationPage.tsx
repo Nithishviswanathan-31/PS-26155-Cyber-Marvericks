@@ -319,6 +319,8 @@ export default function AnalyzeConfigurationPage({
       const result = await analyzeConfiguration(selectedFile);
 
       setAnalysis(result);
+      setStoredAnalysisId(result.analysis_id);
+      setInspectedBatchItemId(null);
       setCandidate(null);
       setReviewMapping({});
       setMappingDecision(null);
@@ -332,6 +334,27 @@ export default function AnalyzeConfigurationPage({
       setWorkflowState("SUCCESS");
 
       onAnalysisCompleted(result);
+
+      if (result.vendor === "astranet") {
+        if (result.reanalyzed) {
+          setReanalysis(result);
+        } else if (result.unknown_patterns && result.unknown_patterns.length > 0) {
+          try {
+            const review = await getUnknownMappingReview(result.unknown_patterns[0].pattern_id);
+            if (review.latest_mapping && review.latest_mapping.status === "APPROVED" && review.latest_mapping.active) {
+              setMappingDecision({
+                pattern_id: review.pattern_id,
+                pattern_status: "UNKNOWN",
+                mapping: review.latest_mapping,
+                compliance_impact: "UNCHANGED",
+                message: `Active approved mapping v${review.latest_mapping.version} is available. Execute explicit re-analysis to evaluate compliance.`,
+              });
+            }
+          } catch {
+            // Graceful non-blocking fallback
+          }
+        }
+      }
 
       setRemediationBusy(true);
 

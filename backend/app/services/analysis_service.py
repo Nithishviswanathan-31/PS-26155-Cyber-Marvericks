@@ -81,4 +81,38 @@ def analyze_configuration_bytes(content: bytes, filename: str, device_id: str | 
     except Exception as exc:
         logger.exception("Could not persist analysis result %s", response.analysis_id)
         raise ApiError(500, ApiErrorCode.STORAGE_FAILURE, "The analysis could not be stored.") from exc
+
+    if security_ir.unknown_patterns:
+        from ..domain.mapping import normalized_context, pattern_signature
+        from ..services.interpretation_service import InterpretationUnavailable, get_interpretation_provider
+        from ..storage.database import (
+            find_knowledge,
+            get_active_approved_mapping,
+            get_interpretation_proposals,
+            save_interpretation_proposal,
+        )
+
+        provider = get_interpretation_provider()
+        for pattern in security_ir.unknown_patterns:
+            if get_active_approved_mapping(pattern.pattern_id) is not None:
+                continue
+            existing = next(
+                (item for item in get_interpretation_proposals(response.analysis_id) if item.pattern_id == pattern.pattern_id),
+                None,
+            )
+            if existing is None:
+                try:
+                    proposal = provider.interpret(pattern, vendor=security_ir.device.vendor, analysis_id=response.analysis_id)
+                    knowledge = find_knowledge(
+                        security_ir.device.vendor,
+                        pattern_signature(security_ir.device.vendor, pattern.raw_pattern),
+                        normalized_context(pattern),
+                    )
+                    proposal = proposal.model_copy(
+                        update={"related_approved_mapping_ids": [f"{item['mapping_id']}:v{item['version']}" for item in knowledge["exact_matches"]]}
+                    )
+                    save_interpretation_proposal(proposal)
+                except (InterpretationUnavailable, Exception):
+                    pass
+
     return response
