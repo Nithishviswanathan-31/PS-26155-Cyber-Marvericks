@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAuth } from "../auth/AuthProvider";
 
 import {
@@ -48,6 +48,7 @@ import {
   analyzeConfiguration,
   analyzeBatch,
   getAnalysis,
+  API_BASE_URL,
   type BatchAnalysis,
   type BatchItem,
   type AnalysisResponse,
@@ -62,6 +63,7 @@ import {
   correctAndApproveMapping,
   deactivateKnowledge,
   getPatternKnowledge,
+  getUnknownMappingReview,
   MappingApiError,
   rejectMapping,
   suggestMapping,
@@ -99,6 +101,7 @@ type WorkflowState =
 interface AnalyzeConfigurationPageProps {
   onAnalysisCompleted: (analysis: AnalysisResponse) => void;
   initialTab?: "single" | "bulk";
+  initialAnalysisId?: string | null;
 }
 
 const MAX_FILE_BYTES = 1 * 1024 * 1024;
@@ -172,6 +175,7 @@ const validateFile = (file: File): string | null => {
 export default function AnalyzeConfigurationPage({
   onAnalysisCompleted,
   initialTab,
+  initialAnalysisId,
 }: AnalyzeConfigurationPageProps) {
   const { user } = useAuth();
   const canAudit = user.role !== "REVIEWER";
@@ -247,8 +251,9 @@ export default function AnalyzeConfigurationPage({
    * When re-analysis exists, use it only as the currently displayed result.
    */
   const displayedAnalysis = reanalysis ?? analysis;
+  const activeReanalysis = reanalysis ?? (analysis?.reanalyzed ? analysis : null);
 
-  const timelineStep = reanalysis
+  const timelineStep = activeReanalysis
     ? ASTRANET_TIMELINE.length
     : reanalysisBusy
       ? 5
@@ -430,6 +435,27 @@ export default function AnalyzeConfigurationPage({
       setSelectedResult(null);
       onAnalysisCompleted(result);
 
+      if (result.vendor === "astranet") {
+        if (result.reanalyzed) {
+          setReanalysis(result);
+        } else if (result.unknown_patterns && result.unknown_patterns.length > 0) {
+          try {
+            const review = await getUnknownMappingReview(result.unknown_patterns[0].pattern_id);
+            if (review.latest_mapping && review.latest_mapping.status === "APPROVED" && review.latest_mapping.active) {
+              setMappingDecision({
+                pattern_id: review.pattern_id,
+                pattern_status: "UNKNOWN",
+                mapping: review.latest_mapping,
+                compliance_impact: "UNCHANGED",
+                message: `Active approved mapping v${review.latest_mapping.version} is available. Execute explicit re-analysis to evaluate compliance.`,
+              });
+            }
+          } catch {
+            // Graceful non-blocking fallback
+          }
+        }
+      }
+
       setRemediationBusy(true);
       try {
         const remediationResponse = await getRemediations(result.analysis_id);
@@ -447,6 +473,45 @@ export default function AnalyzeConfigurationPage({
       setErrorMessage(error instanceof AnalysisApiError ? error.message : "The analysis could not be loaded.");
     }
   };
+
+  useEffect(() => {
+    if (initialAnalysisId) {
+      setStoredAnalysisId(initialAnalysisId);
+      setIngestionTab("single");
+      void openBatchAnalysis(initialAnalysisId);
+    }
+  }, [initialAnalysisId]);
+
+  useEffect(() => {
+    if (ingestionTab === "bulk" && !batch && !batchBusy) {
+      let isSubscribed = true;
+      fetch(`${API_BASE_URL}/api/batches?limit=1`)
+        .then((r) => (r.ok ? r.json() : Promise.reject()))
+        .then(async (data: { items?: Array<{ batch_id: string }> }) => {
+          if (!isSubscribed) return;
+          const latestBatchSummary = data?.items?.[0];
+          if (latestBatchSummary?.batch_id) {
+            const batchId = latestBatchSummary.batch_id;
+            const [bRes, itemsRes] = await Promise.all([
+              fetch(`${API_BASE_URL}/api/batches/${encodeURIComponent(batchId)}`),
+              fetch(`${API_BASE_URL}/api/batches/${encodeURIComponent(batchId)}/items`),
+            ]);
+            if (bRes.ok && itemsRes.ok) {
+              const bData = (await bRes.json()) as BatchAnalysis;
+              const itemsData = (await itemsRes.json()) as BatchItem[];
+              if (isSubscribed) {
+                setBatch(bData);
+                setBatchItems(itemsData);
+              }
+            }
+          }
+        })
+        .catch(() => {});
+      return () => {
+        isSubscribed = false;
+      };
+    }
+  }, [ingestionTab, batch, batchBusy]);
 
   const removeFile = () => {
     setSelectedFile(null);
@@ -2020,7 +2085,7 @@ export default function AnalyzeConfigurationPage({
             </Card>
           )}
 
-          {reanalysis && (
+          {activeReanalysis && (
             <Card
               sx={{
                 border:
@@ -2042,7 +2107,7 @@ export default function AnalyzeConfigurationPage({
                       variant="h6"
                       sx={{ mt: 0.5 }}
                     >
-                      {reanalysis.message ??
+                      {activeReanalysis.message ??
                         "Explicit re-analysis completed."}
                     </Typography>
                   </Box>
@@ -2064,7 +2129,7 @@ export default function AnalyzeConfigurationPage({
                           wordBreak: "break-all",
                         }}
                       >
-                        {reanalysis.parent_analysis_id ??
+                        {activeReanalysis.parent_analysis_id ??
                           "Not available"}
                       </Typography>
                     </Grid>
@@ -2079,7 +2144,7 @@ export default function AnalyzeConfigurationPage({
 
                       <Typography sx={{ mt: 0.5 }}>
                         v
-                        {reanalysis.mapping_version ??
+                        {activeReanalysis.mapping_version ??
                           "?"}{" "}
                         · ACTIVE
                       </Typography>
@@ -2115,7 +2180,7 @@ export default function AnalyzeConfigurationPage({
                     flexWrap="wrap"
                     useFlexGap
                   >
-                    {reanalysis.results.map((result) => (
+                    {activeReanalysis.results.map((result) => (
                       <Chip
                         key={result.control_id}
                         label={`${result.control_id}: ${result.result}`}
@@ -2134,7 +2199,7 @@ export default function AnalyzeConfigurationPage({
                     EVIDENCE
                   </Typography>
 
-                  {reanalysis.evidence.map(
+                  {activeReanalysis.evidence.map(
                     (item, index) => (
                       <Paper
                         key={`${item.property}-${index}`}
@@ -2178,8 +2243,8 @@ export default function AnalyzeConfigurationPage({
                     startIcon={<Download />}
                     onClick={() =>
                       handleGenerateReport(
-                        reanalysis.analysis_id,
-                        `${reanalysis.filename}-reanalyzed`
+                        activeReanalysis.analysis_id,
+                        `${activeReanalysis.filename}-reanalyzed`
                       )
                     }
                     disabled={reportBusy}

@@ -35,9 +35,15 @@ export default function App() {
   const [logoutError, setLogoutError] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<string>("dashboard");
   const [analyses, setAnalyses] = useState<AnalysisResponse[]>([]);
+  const [inspectAnalysisId, setInspectAnalysisId] = useState<string | null>(null);
 
   const handleAnalysisCompleted = (analysis: AnalysisResponse) => {
     setAnalyses((current) => [...current, analysis]);
+  };
+
+  const handleInspectAnalysis = (analysisId: string) => {
+    setInspectAnalysisId(analysisId);
+    setActiveView("single-audit");
   };
 
   return (
@@ -129,10 +135,12 @@ export default function App() {
               <DashboardPage
                 analyses={analyses}
                 onAnalyze={(tab) => setActiveView(tab === "bulk" ? "bulk-audit" : "single-audit")}
+                onInspectAnalysis={handleInspectAnalysis}
               />
             ) : activeView === "single-audit" || activeView === "analyze" ? (
               <AnalyzeConfigurationPage
                 initialTab="single"
+                initialAnalysisId={inspectAnalysisId}
                 onAnalysisCompleted={handleAnalysisCompleted}
               />
             ) : activeView === "bulk-audit" ? (
@@ -148,6 +156,7 @@ export default function App() {
               <ConsolePage
                 title={activeView === "knowledge" ? "Knowledge Review Queue" : activeView[0].toUpperCase() + activeView.slice(1)}
                 path={activeView === "knowledge" ? "/api/knowledge/review-queue" : `/api/${activeView}`}
+                onInspectAnalysis={handleInspectAnalysis}
               />
             )}
           </Stack>

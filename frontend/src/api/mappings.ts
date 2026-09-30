@@ -157,3 +157,17 @@ export async function rejectMapping(
     jsonRequest({ reviewer_id: reviewerId, reason, proposal_id: proposalId }),
   );
 }
+
+export interface MappingReviewResponse {
+  pattern_id: string;
+  vendor: string;
+  pattern: unknown;
+  latest_mapping?: MappingVersion | null;
+}
+
+export async function getUnknownMappingReview(patternId: string): Promise<MappingReviewResponse> {
+  return requestMapping<MappingReviewResponse>(
+    `/api/mappings/unknown/${encodeURIComponent(patternId)}`,
+    { method: "GET" },
+  );
+}

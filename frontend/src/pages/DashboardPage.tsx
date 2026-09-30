@@ -21,13 +21,28 @@ import { useEffect, useState } from "react";
 
 import { API_BASE_URL, type AnalysisResponse } from "../api/analyze";
 
+interface DashboardSummary {
+  total_analyses?: number;
+  total_devices?: number;
+  overall_compliance_rate?: number;
+  active_rules?: number;
+  recent_analyses?: Array<{
+    analysis_id?: string;
+    filename?: string;
+    vendor?: string;
+    compliance_status?: string;
+  }>;
+  [key: string]: unknown;
+}
+
 interface DashboardPageProps {
   analyses: AnalysisResponse[];
   onAnalyze: (tab: "single" | "bulk") => void;
+  onInspectAnalysis?: (analysisId: string) => void;
 }
 
-export default function DashboardPage({ analyses, onAnalyze }: DashboardPageProps) {
-  const [summary, setSummary] = useState<Record<string, unknown> | null>(null);
+export default function DashboardPage({ analyses, onAnalyze, onInspectAnalysis }: DashboardPageProps) {
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const load = () => { setLoading(true); setError(null); fetch(`${API_BASE_URL}/api/dashboard/summary`).then((r) => r.ok ? r.json() : Promise.reject()).then(setSummary).catch(() => setError("Persisted dashboard metrics could not be loaded.")).finally(() => setLoading(false)); };
@@ -146,20 +161,34 @@ export default function DashboardPage({ analyses, onAnalyze }: DashboardPageProp
         </CardContent>
       </Card>
 
-      {Array.isArray(summary?.recent_analyses) && summary.recent_analyses.length > 0 && (
-        <Card>
-          <CardContent>
-            <Typography variant="subtitle1" fontWeight={700}>
-              Last analysis
-            </Typography>
-            <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1 }}>
-              <Chip label={String((summary.recent_analyses[0] as Record<string, unknown>).filename ?? "analysis")} size="small" />
-              <Chip label={String((summary.recent_analyses[0] as Record<string, unknown>).vendor ?? "")} size="small" variant="outlined" />
-              <Chip label={String((summary.recent_analyses[0] as Record<string, unknown>).analysis_id ?? "")} size="small" variant="outlined" />
-            </Stack>
-          </CardContent>
-        </Card>
-      )}
+      {summary?.recent_analyses && summary.recent_analyses.length > 0 && (() => {
+        const lastAnalysis = summary.recent_analyses[0];
+        return (
+          <Card>
+            <CardContent>
+              <Stack direction="row" justifyContent="space-between" alignItems="center">
+                <Typography variant="subtitle1" fontWeight={700}>
+                  Last analysis
+                </Typography>
+                {onInspectAnalysis && lastAnalysis.analysis_id && (
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => onInspectAnalysis(lastAnalysis.analysis_id!)}
+                  >
+                    Inspect Analysis
+                  </Button>
+                )}
+              </Stack>
+              <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ mt: 1 }}>
+                <Chip label={lastAnalysis.filename ?? "analysis"} size="small" />
+                {lastAnalysis.vendor && <Chip label={lastAnalysis.vendor} size="small" variant="outlined" />}
+                {lastAnalysis.analysis_id && <Chip label={lastAnalysis.analysis_id} size="small" variant="outlined" />}
+              </Stack>
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {!loading && !error && metric("total_analyses") === 0 && (
         <Typography color="text.secondary">

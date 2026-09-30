@@ -26,8 +26,9 @@ import {
   Tooltip,
   Typography,
 } from "@mui/material";
-import { CheckCircle, Edit, Cancel, Block } from "@mui/icons-material";
+import { CheckCircle, Edit, Cancel, Block, PictureAsPdf, Visibility } from "@mui/icons-material";
 import { consoleGet, type ConsolePage as ConsolePageType } from "../api/console";
+import { generatePdfReport, downloadPdf } from "../api/reports";
 import {
   approveMapping,
   correctAndApproveMapping,
@@ -358,9 +359,11 @@ function KnowledgeActionDialog({
 export default function ConsolePage({
   title,
   path,
+  onInspectAnalysis,
 }: {
   title: string;
   path: string;
+  onInspectAnalysis?: (analysisId: string) => void;
 }) {
   let currentUser: SessionUser = {
     user_id: "local-admin",
@@ -382,6 +385,7 @@ export default function ConsolePage({
   const [offset, setOffset] = useState(0);
   const [activeAction, setActiveAction] = useState<ActionState | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
+  const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const load = () => {
     setData(null);
@@ -784,30 +788,84 @@ export default function ConsolePage({
                     {columns.map((c) => (
                       <TableCell key={c}>{c.replaceAll("_", " ")}</TableCell>
                     ))}
+                    {items.some((it) => Boolean(it.analysis_id)) && (
+                      <TableCell align="right">Actions</TableCell>
+                    )}
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {items.map((item, i) => (
-                    <TableRow
-                      key={String(
-                        item.analysis_id ??
-                          item.device_id ??
-                          item.configuration_id ??
-                          item.batch_id ??
-                          i
-                      )}
-                    >
-                      {columns.map((c) => (
-                        <TableCell key={c}>
-                          {typeof item[c] === "object" ? (
-                            <Chip size="small" label={JSON.stringify(item[c]).slice(0, 56)} />
-                          ) : (
-                            String(item[c] ?? "—")
-                          )}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
+                  {items.map((item, i) => {
+                    const aid = item.analysis_id ? String(item.analysis_id) : null;
+                    const hasAnalysis = items.some((it) => Boolean(it.analysis_id));
+                    return (
+                      <TableRow
+                        key={String(
+                          item.analysis_id ??
+                            item.device_id ??
+                            item.configuration_id ??
+                            item.batch_id ??
+                            i
+                        )}
+                        hover
+                        sx={{
+                          cursor: aid && onInspectAnalysis ? "pointer" : "default",
+                        }}
+                        onClick={() => {
+                          if (aid && onInspectAnalysis) {
+                            onInspectAnalysis(aid);
+                          }
+                        }}
+                      >
+                        {columns.map((c) => (
+                          <TableCell key={c}>
+                            {typeof item[c] === "object" ? (
+                              <Chip size="small" label={JSON.stringify(item[c]).slice(0, 56)} />
+                            ) : (
+                              String(item[c] ?? "—")
+                            )}
+                          </TableCell>
+                        ))}
+                        {hasAnalysis && (
+                          <TableCell align="right" sx={{ whiteSpace: "nowrap" }} onClick={(e) => e.stopPropagation()}>
+                            {aid && (
+                              <Stack direction="row" spacing={1} justifyContent="flex-end">
+                                <Button
+                                  size="small"
+                                  variant="contained"
+                                  color="primary"
+                                  startIcon={<Visibility fontSize="small" />}
+                                  onClick={() => onInspectAnalysis && onInspectAnalysis(aid)}
+                                >
+                                  Inspect
+                                </Button>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  color="secondary"
+                                  startIcon={<PictureAsPdf fontSize="small" />}
+                                  disabled={downloadingId === aid}
+                                  onClick={async () => {
+                                    setDownloadingId(aid);
+                                    try {
+                                      const blob = await generatePdfReport(aid);
+                                      const fname = String(item.filename || "analysis").replace(/\.[^.]+$/, "");
+                                      downloadPdf(blob, `ps26155-${fname}-report.pdf`);
+                                    } catch (err: unknown) {
+                                      setNotification(err instanceof Error ? err.message : "PDF could not be downloaded.");
+                                    } finally {
+                                      setDownloadingId(null);
+                                    }
+                                  }}
+                                >
+                                  {downloadingId === aid ? "Exporting…" : "PDF"}
+                                </Button>
+                              </Stack>
+                            )}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
               <Stack direction="row" justifyContent="space-between" sx={{ mt: 2 }}>
